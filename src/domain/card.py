@@ -33,11 +33,10 @@ class Card:
         return f"{self.rank.value}{self.suit.value}"
 
     def value(self):
-        """Devuelve el valor en puntos de la carta (puedes adaptarlo según el juego)."""
-        if self.rank in {Rank.JACK, Rank.QUEEN, Rank.KING}:
+        if self.rank in {Rank.TEN, Rank.JACK, Rank.QUEEN, Rank.KING}:
             return 10
         if self.rank == Rank.ACE:
-            return 11
+            return 15
         if self.rank == Rank.JOKER:
-            return 0
-        return int(self.rank.value)
+            return 25
+        return 5

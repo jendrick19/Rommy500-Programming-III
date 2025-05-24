@@ -3,11 +3,11 @@ import math
 from constants import *
 
 class UI:
-    def __init__(self, screen):
+    def __init__(self, screen, card_font=None):
         self.screen = screen
         self.font = pygame.font.SysFont(None, 24)
         self.title_font = pygame.font.SysFont(None, 36)
-        self.card_font = pygame.font.SysFont(None, 32)
+        self.card_font = card_font or pygame.font.SysFont(None, 32)
         self.selected_card = None
         self.selected_combination = None
         self.selected_player = None
@@ -163,21 +163,24 @@ class UI:
         player = game.players[game.player_id]
         
         # Dibujar información del jugador
+        base_y = SCREEN_HEIGHT - 280
+
         player_text = f"Tu mano (Jugador {game.player_id + 1})" + (" (Mano)" if player.is_mano else "")
         player_surface = self.title_font.render(player_text, True, PLAYER_COLORS[game.player_id % len(PLAYER_COLORS)])
-        self.screen.blit(player_surface, (20, SCREEN_HEIGHT - 180))
+        self.screen.blit(player_surface, (20, base_y))
         
         score_text = f"Puntos: {player.score}"
         score_surface = self.font.render(score_text, True, TEXT_COLOR)
-        self.screen.blit(score_surface, (20, SCREEN_HEIGHT - 150))
+        self.screen.blit(score_surface, (20, base_y + 30))
         
         status_text = "Bajado" if player.has_laid_down else "No bajado"
         status_surface = self.font.render(status_text, True, TEXT_COLOR)
-        self.screen.blit(status_surface, (150, SCREEN_HEIGHT - 150))
+        self.screen.blit(status_surface, (150, base_y + 30))
+
         
         # Dibujar cartas de la mano
         hand_x = 20
-        hand_y = SCREEN_HEIGHT - 130
+        hand_y = base_y + 60
         card_spacing = min(CARD_SPACING, (SCREEN_WIDTH - 40) / max(1, len(player.hand)) - CARD_WIDTH)
         
         for i, card in enumerate(player.hand):
@@ -193,35 +196,41 @@ class UI:
     
     def draw_card(self, card, x, y):
         """Dibuja una carta"""
-        # Dibujar rectángulo de la carta
+        # Colores base
         card_color = (255, 255, 255)  # Blanco para cartas normales
+        text_color = (0, 0, 0)
         if card.is_joker:
             card_color = (200, 200, 0)  # Amarillo para Jokers
         elif card.suit in ['♥', '♦']:
-            card_color = (255, 200, 200)  # Rojo claro para corazones y diamantes
-        
+            card_color = (255, 200, 200)  # Rojo claro
+            text_color = (150, 0, 0)      # Rojo oscuro para texto
+    
+        # Rectángulo principal
         card_rect = pygame.Rect(x, y, CARD_WIDTH, CARD_HEIGHT)
         pygame.draw.rect(self.screen, card_color, card_rect, border_radius=5)
         pygame.draw.rect(self.screen, (0, 0, 0), card_rect, 2, border_radius=5)
-        
-        # Dibujar valor y palo
+    
         if card.is_joker:
-            joker_text = self.card_font.render("🃏", True, (0, 0, 0))
-            self.screen.blit(joker_text, (x + CARD_WIDTH // 2 - joker_text.get_width() // 2, 
-                                        y + CARD_HEIGHT // 2 - joker_text.get_height() // 2))
+            # 🃏 centrado
+            joker_text = self.card_font.render("🃏", True, text_color)
+            self.screen.blit(
+                joker_text, 
+                (x + CARD_WIDTH // 2 - joker_text.get_width() // 2,
+                 y + CARD_HEIGHT // 2 - joker_text.get_height() // 2)
+            )
         else:
-            # Valor en la esquina superior izquierda
-            value_text = self.card_font.render(card.value, True, (0, 0, 0))
-            self.screen.blit(value_text, (x + 5, y + 5))
-            
-            # Palo en la esquina superior derecha
-            suit_text = self.card_font.render(card.suit, True, (0, 0, 0))
-            self.screen.blit(suit_text, (x + CARD_WIDTH - suit_text.get_width() - 5, y + 5))
-            
-            # Valor y palo en el centro
-            center_text = self.card_font.render(f"{card.value}{card.suit}", True, (0, 0, 0))
-            self.screen.blit(center_text, (x + CARD_WIDTH // 2 - center_text.get_width() // 2, 
-                                        y + CARD_HEIGHT // 2 - center_text.get_height() // 2))
+            # Esquinas
+            value_text = self.card_font.render(card.value, True, text_color)
+            suit_text = self.card_font.render(card.suit, True, text_color)
+        
+            # Superior izquierda (valor)
+            self.screen.blit(value_text, (x + 5, y + 3))
+            # Inferior derecha (palo)
+            self.screen.blit(suit_text, (
+                x + CARD_WIDTH - suit_text.get_width() - 5,
+                y + CARD_HEIGHT - suit_text.get_height() - 5
+            ))
+
     
     def draw_mini_card(self, card, x, y):
         """Dibuja una versión miniatura de una carta"""
@@ -325,7 +334,8 @@ class UI:
             message = f"Turno del Jugador {game.current_player_idx + 1}"
         
         message_surface = self.title_font.render(message, True, TEXT_COLOR)
-        self.screen.blit(message_surface, (SCREEN_WIDTH // 2 - message_surface.get_width() // 2, SCREEN_HEIGHT - 40))
+        self.screen.blit(message_surface, (SCREEN_WIDTH // 2 - message_surface.get_width() // 2, SCREEN_HEIGHT - 90))
+
     
     def handle_click(self, pos, game):
         """Maneja los clics del ratón"""
@@ -342,7 +352,8 @@ class UI:
         # Verificar si se hizo clic en una carta de la mano
         player = game.players[game.player_id]
         hand_x = 20
-        hand_y = SCREEN_HEIGHT - 130
+        base_y = SCREEN_HEIGHT - 280
+        hand_y = base_y + 60 
         card_spacing = min(CARD_SPACING, (SCREEN_WIDTH - 40) / max(1, len(player.hand)) - CARD_WIDTH)
         
         for i, card in enumerate(player.hand):

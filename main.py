@@ -158,7 +158,16 @@ def main():
     # Inicializar juego
     try:
         game = Game(network)
-        ui = UI(screen)
+        import os
+
+        try:
+            font_path = os.path.join("DejaVuSans.ttf")
+            card_font = pygame.font.Font(font_path, 32)
+        except:
+            card_font = pygame.font.SysFont("dejavusans", 32)
+
+        ui = UI(screen, card_font=card_font)
+
         if network.is_host():
             network.game_action_handler = game.handle_network_action
     except Exception as e:

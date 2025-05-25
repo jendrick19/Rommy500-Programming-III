@@ -182,16 +182,20 @@ class UI:
         seguidillas = player.detect_seguidillas()
 
         # Calcular posición derecha de los mensajes
-        info_x = SCREEN_WIDTH - 250  # Ajustable: separa del borde derecho
-        info_y = base_y
+        # Fuente decorativa más grande y en negrita
+        info_font = pygame.font.SysFont("dejavusans", 28, bold=True)
+
+        info_x = SCREEN_WIDTH - 240  # Más hacia el borde derecho
+        info_y = base_y + 5
 
         if trios:
-            trio_text = self.font.render(f"Tríos: {len(trios)}", True, (0, 100, 255))  # Azul fuerte
-            self.screen.blit(trio_text, (info_x, info_y + 10))
+            trio_text = info_font.render(f"🃏 Tríos: {len(trios)}", True, (30, 144, 255))  # Azul brillante
+            self.screen.blit(trio_text, (info_x, info_y))
 
         if seguidillas:
-            seq_text = self.font.render(f"Seguidillas: {len(seguidillas)}", True, (0, 200, 200))  # Cian
+            seq_text = info_font.render(f"♠ Seguidillas: {len(seguidillas)}", True, (50, 205, 50))  # Verde lima
             self.screen.blit(seq_text, (info_x, info_y + 35))
+
 
 
         # Dibujar cartas de la mano

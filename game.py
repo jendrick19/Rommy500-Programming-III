@@ -16,6 +16,7 @@ class Game:
         self.round_num = 0
         self.state = GAME_STATE_WAITING
         self.winner = None
+        self.deck_checked = False
         self.eliminated_players = []
         self.player_id = network.get_id()  # ID del jugador local
         
@@ -40,6 +41,10 @@ class Game:
             
             # Repartir cartas
             self.deck.reset()
+            if not self.deck_checked:
+                self.check_deck_duplicates("Inicio juego → ")
+                self.deck_checked = True
+
             for player in self.players:
                 player.add_to_hand(self.deck.deal(10))
             
@@ -103,6 +108,8 @@ class Game:
         
         # Reiniciar el mazo y el descarte
         self.deck.reset()
+        self.deck_checked = False  # Para volver a permitir validación
+        self.check_deck_duplicates(f"Ronda {self.round_num + 1} → ")
         self.discard_pile = DiscardPile()
         
         # Reiniciar los jugadores
@@ -588,3 +595,9 @@ class Game:
                     action['joker_idx'],
                     action.get('target_player_idx')
                 )
+
+    def check_deck_duplicates(self, mensaje=""):
+        seen = set()
+        for card in self.deck.cards:
+            seen.add((card.value, card.suit))
+            print(f"{mensaje}Total cartas únicas: {len(seen)} / Total en mazo: {len(self.deck.cards)}")

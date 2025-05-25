@@ -94,6 +94,7 @@ class Deck:
         # Añadir un Joker
         self.cards.append(Card('JOKER'))
         
+        
         # Barajar
         self.shuffle()
     

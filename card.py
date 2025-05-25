@@ -69,6 +69,15 @@ class Card:
         card.face_up = bool(data['face_up'])
         card.points = int(data['points'])
         return card
+    
+    def __hash__(self):
+        return hash((self.value, self.suit, self.is_joker))
+
+    def __eq__(self, other):
+        if not isinstance(other, Card):
+            return False
+        return self.value == other.value and self.suit == other.suit and self.is_joker == other.is_joker
+
 
 class Deck:
     def __init__(self):

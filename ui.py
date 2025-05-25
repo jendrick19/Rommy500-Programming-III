@@ -177,11 +177,37 @@ class UI:
         status_surface = self.font.render(status_text, True, TEXT_COLOR)
         self.screen.blit(status_surface, (150, base_y + 30))
 
-        
+        # Mostrar trío(s) y seguidilla(s) detectados
+        trios = player.detect_trios()
+        seguidillas = player.detect_seguidillas()
+
+        # Calcular posición derecha de los mensajes
+        info_x = SCREEN_WIDTH - 250  # Ajustable: separa del borde derecho
+        info_y = base_y
+
+        if trios:
+            trio_text = self.font.render(f"Tríos: {len(trios)}", True, (0, 100, 255))  # Azul fuerte
+            self.screen.blit(trio_text, (info_x, info_y + 10))
+
+        if seguidillas:
+            seq_text = self.font.render(f"Seguidillas: {len(seguidillas)}", True, (0, 200, 200))  # Cian
+            self.screen.blit(seq_text, (info_x, info_y + 35))
+
+
         # Dibujar cartas de la mano
         hand_x = 20
         hand_y = base_y + 60
         card_spacing = min(CARD_SPACING, (SCREEN_WIDTH - 40) / max(1, len(player.hand)) - CARD_WIDTH)
+
+        # Obtener cartas que están en tríos o seguidillas
+        trios = player.detect_trios()
+        seguidillas = player.detect_seguidillas()
+
+        # Aplanar las listas de combinaciones en una sola lista de cartas
+        cards_in_combos = set()
+        for combo in trios + seguidillas:
+            cards_in_combos.update(combo)
+
         
         for i, card in enumerate(player.hand):
             card_x = hand_x + i * (CARD_WIDTH + card_spacing)
@@ -192,6 +218,11 @@ class UI:
                 pygame.draw.rect(self.screen, (255, 255, 0), 
                                 (card_x - 5, card_y - 5, CARD_WIDTH + 10, CARD_HEIGHT + 10), 3, border_radius=5)
             
+            # Resaltar en azul si está en un trío o seguidilla
+            if card in cards_in_combos:
+                pygame.draw.rect(self.screen, (0, 100, 255),  # Azul
+                    (card_x - 3, card_y - 3, CARD_WIDTH + 6, CARD_HEIGHT + 6), 3, border_radius=5)
+
             self.draw_card(card, card_x, card_y)
     
     def draw_card(self, card, x, y):

@@ -481,7 +481,60 @@ class Player:
                 break
         
         return sequences
+    def detect_trios(self):
+        """Detecta tríos en la mano (sin quitarlos)"""
+        from collections import defaultdict
+        value_map = defaultdict(list)
+        for card in self.hand:
+            if not card.is_joker:
+                value_map[card.value].append(card)
     
+        trios = []
+        for value, cards in value_map.items():
+            if len(cards) >= 3:
+                trios.append(cards)
+        return trios
+
+
+    def detect_seguidillas(self):
+        """Detecta seguidillas (4+ cartas consecutivas del mismo palo)"""
+        from collections import defaultdict
+
+        # Orden de valores
+        order = {val: i for i, val in enumerate(VALUES)}
+
+        #Agrupar cartas por palo
+        suits = defaultdict(list)
+        for card in self.hand:
+            if not card.is_joker and card.value in order:
+                suits[card.suit].append(card)
+
+        seguidillas = []
+
+        for suit, cards in suits.items():
+            # Ordenar las cartas por el índice en VALUES
+            sorted_cards = sorted(cards, key=lambda c: order[c.value])
+
+            # Buscar secuencias de 4 o más consecutivas
+            temp = [sorted_cards[0]]
+            for i in range(1, len(sorted_cards)):
+                prev_idx = order[sorted_cards[i - 1].value]
+                curr_idx = order[sorted_cards[i].value]
+                if curr_idx == prev_idx + 1:
+                    temp.append(sorted_cards[i])
+                elif curr_idx == prev_idx:
+                    continue  # Ignorar duplicados
+                else:
+                    if len(temp) >= 4:
+                        seguidillas.append(temp[:])
+                    temp = [sorted_cards[i]]
+        
+        if len(temp) >= 4:
+            seguidillas.append(temp)
+
+        return seguidillas
+
+
     def to_dict(self):
         return {
             'id': self.id,

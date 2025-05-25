@@ -186,7 +186,7 @@ class UI:
         info_font = pygame.font.SysFont("dejavusans", 28, bold=True)
 
         info_x = SCREEN_WIDTH - 240  # Más hacia el borde derecho
-        info_y = base_y + 5
+        info_y = base_y - 25  # CAMBIO: Subir 30 píxeles (era base_y + 5)
 
         if trios:
             trio_text = info_font.render(f"🃏 Tríos: {len(trios)}", True, (30, 144, 255))  # Azul brillante
@@ -194,9 +194,8 @@ class UI:
 
         if seguidillas:
             seq_text = info_font.render(f"♠ Seguidillas: {len(seguidillas)}", True, (50, 205, 50))  # Verde lima
-            self.screen.blit(seq_text, (info_x, info_y + 35))
-
-
+            # CAMBIO: Mover seguidilla más a la izquierda (restar 50 píxeles)
+            self.screen.blit(seq_text, (info_x - 50, info_y + 35))
 
         # Dibujar cartas de la mano
         hand_x = 20
@@ -276,7 +275,7 @@ class UI:
         elif card.suit in ['♥', '♦']:
             card_color = (255, 200, 200)  # Rojo claro para corazones y diamantes
         
-        mini_width = 15
+        mini_width = 20 if len(card.value) > 1 else 15
         mini_height = 20
         card_rect = pygame.Rect(x, y, mini_width, mini_height)
         pygame.draw.rect(self.screen, card_color, card_rect, border_radius=2)
@@ -287,7 +286,7 @@ class UI:
         if card.is_joker:
             mini_text = mini_font.render("J", True, (0, 0, 0))
         else:
-            mini_text = mini_font.render(card.value[0], True, (0, 0, 0))
+            mini_text = mini_font.render(card.value, True, (0, 0, 0))
         self.screen.blit(mini_text, (x + mini_width // 2 - mini_text.get_width() // 2, 
                                     y + mini_height // 2 - mini_text.get_height() // 2))
     

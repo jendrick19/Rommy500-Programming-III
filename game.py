@@ -595,7 +595,7 @@ class Game:
                     action['joker_idx'],
                     action.get('target_player_idx')
                 )
-
+    
     def check_deck_duplicates(self, mensaje=""):
         seen = set()
         for card in self.deck.cards:

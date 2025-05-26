@@ -45,9 +45,13 @@ class Game:
                 self.check_deck_duplicates("Inicio juego → ")
                 self.deck_checked = True
 
+            # Preparar cartas a repartir
+            cards_to_deal = []
             for player in self.players:
-                player.add_to_hand(self.deck.deal(10))
-            
+                cards = self.deck.deal(10)
+                cards_to_deal.append(cards)
+            # No las añadas aún a la mano
+
             # Colocar la primera carta en el descarte
             self.discard_pile.add(self.deck.deal())
             
@@ -57,6 +61,9 @@ class Game:
             # Enviar el estado inicial a todos los jugadores
             self.network.send_game_state(self.to_dict())
             print("Estado inicial del juego enviado a todos los jugadores")
+            
+            # Guardar temporalmente las cartas a repartir para la animación
+            self.cards_to_deal = cards_to_deal
         except Exception as e:
             print(f"Error al inicializar el juego: {e}")
             traceback.print_exc()
@@ -80,8 +87,8 @@ class Game:
         # Recibir actualizaciones de la red
         game_state = self.network.receive_game_state()
         if game_state:
+            self.update_from_dict(game_state)
             try:
-                self.update_from_dict(game_state)
                 # Asegurarse de que el player_id sigue siendo válido
                 if self.player_id >= len(self.players):
                     print(f"Error: player_id {self.player_id} fuera de rango. Ajustando...")
@@ -111,9 +118,15 @@ class Game:
         self.deck_checked = False  # Para volver a permitir validación
         self.check_deck_duplicates(f"Ronda {self.round_num + 1} → ")
         self.discard_pile = DiscardPile()
+        self.sequences_laid_down = 0
+        self.trios_laid_down = 0
         
         # Reiniciar los jugadores
         for player in self.players:
+            player.has_laid_down_trio = False
+            player.has_laid_down_sequence = False
+            player.sequences_laid_down = 0
+            player.trios_laid_down = 0
             player.hand = []
             player.combinations = []
             player.has_laid_down = False
@@ -228,21 +241,21 @@ class Game:
         """El jugador actual baja sus combinaciones"""
         if self.state != GAME_STATE_PLAYING:
             return False
-        
+
         player = self.players[self.current_player_idx]
-        
-        # Verificar si el jugador ya se ha bajado
-        if player.has_laid_down:
+
+        # Solo bloquear en ronda 4 (donde debe bajarse todo junto)
+        if self.round_num == 3 and player.has_laid_down:
             return False
-        
+
         # Verificar si el jugador puede bajarse
         if not player.can_lay_down(self.round_num):
             return False
-        
+
         # Bajar las combinaciones
         if not player.lay_down(self.round_num):
             return False
-        
+
         # Enviar el estado actualizado
         if self.network.is_host():
             self.network.send_game_state(self.to_dict())
@@ -251,7 +264,7 @@ class Game:
                 'type': ACTION_PLAY_COMBINATION,
                 'player_id': self.player_id
             })
-        
+
         return True
     
     def add_to_combination(self, card_idx, combination_idx, player_idx=None):
@@ -471,12 +484,11 @@ class Game:
         card = player.hand[card_idx]
         player.remove_from_hand(card)
         self.discard_pile.add(card)
-        
-        # Verificar si el jugador ha ganado la ronda
-        if len(player.hand) == 0:
+
+        # Verificar si el jugador ha ganado la ronda (sin cartas y cumplió el requisito)
+        if len(player.hand) == 0 and player.has_completed_round_requirement:
             self.end_round()
         else:
-            # Pasar al siguiente jugador
             self.next_player()
         
         # Enviar el estado actualizado
@@ -568,17 +580,22 @@ class Game:
         """Procesa una acción recibida de un cliente (solo el host)"""
         action_type = action.get('type')
         player_id = action.get('player_id')
+        
         if action_type == ACTION_DRAW_DECK:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.take_card_from_deck()
         elif action_type == ACTION_DRAW_DISCARD:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.take_card_from_discard(action.get('is_penalty', False))
         elif action_type == ACTION_PLAY_COMBINATION:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.lay_down_combination()
         elif action_type == ACTION_ADD_TO_COMBINATION:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.add_to_combination(
                     action['card_idx'],
                     action['combination_idx'],
@@ -586,9 +603,11 @@ class Game:
                 )
         elif action_type == ACTION_DISCARD:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.discard_card(action['card_idx'])
         elif action_type == ACTION_REPLACE_JOKER:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.replace_joker(
                     action['card_idx'],
                     action['combination_idx'],

@@ -6,13 +6,18 @@ class Player:
         self.id = id
         self.name = name
         self.hand = []
-        self.combinations = []  # Lista de combinaciones bajadas
-        self.score = 0  # Puntuación acumulada
-        self.is_mano = False  # Indica si el jugador es el "mano" (primer jugador)
-        self.has_laid_down = False  # Indica si el jugador ya ha bajado en esta ronda
-        self.took_discard = False  # Indica si el jugador tomó la carta de descarte
-        self.took_penalty = False  # Indica si el jugador tomó la penalización
-    
+        self.combinations = []
+        self.score = 0
+        self.is_mano = False
+        self.has_laid_down = False
+        self.took_discard = False
+        self.took_penalty = False
+        self.has_laid_down_trio = False
+        self.has_laid_down_sequence = False
+        self.sequences_laid_down = 0
+        self.trios_laid_down = 0
+        self.has_completed_round_requirement = False  # Nuevo flag
+
     def add_to_hand(self, cards):
         if isinstance(cards, list):
             self.hand.extend(cards)
@@ -30,71 +35,46 @@ class Player:
         return sum(card.points for card in self.hand)
     
     def can_lay_down(self, round_num):
-        """Verifica si el jugador puede bajarse según las reglas de la ronda actual"""
-        if round_num == 0:  # Ronda 1: Un Trío y Una Seguidilla
-            return self._has_trio() and self._has_sequence()
-        elif round_num == 1:  # Ronda 2: Dos Seguidillas
-            return self._count_sequences() >= 2
-        elif round_num == 2:  # Ronda 3: Tres Tríos
-            return self._count_trios() >= 3
-        elif round_num == 3:  # Ronda 4: Una Seguidilla y Dos Tríos
-            return self._has_sequence() and self._count_trios() >= 2
-        return False
-    
+        # Siempre puede bajarse si tiene un trío o seguidilla
+        return self._has_trio() or self._has_sequence()
+
     def lay_down(self, round_num):
-        """Baja las combinaciones requeridas para la ronda actual"""
-        if not self.can_lay_down(round_num):
-            return False
-        
-        if round_num == 0:  # Ronda 1: Un Trío y Una Seguidilla
+        """Baja todas las combinaciones posibles en la mano"""
+        laid_down = False
+        # Bajar todos los tríos posibles
+        while self._has_trio():
             trio = self._get_trio()
-            sequence = self._get_sequence()
-            if trio and sequence:
+            if trio:
                 self.combinations.append({"type": "trio", "cards": trio})
-                self.combinations.append({"type": "sequence", "cards": sequence})
-                for card in trio + sequence:
+                for card in trio:
                     self.remove_from_hand(card)
-                self.has_laid_down = True
-                return True
-        
-        elif round_num == 1:  # Ronda 2: Dos Seguidillas
-            sequences = self._get_sequences(2)
-            if len(sequences) >= 2:
-                for sequence in sequences[:2]:
-                    self.combinations.append({"type": "sequence", "cards": sequence})
-                    for card in sequence:
-                        self.remove_from_hand(card)
-                self.has_laid_down = True
-                return True
-        
-        elif round_num == 2:  # Ronda 3: Tres Tríos
-            trios = self._get_trios(3)
-            if len(trios) >= 3:
-                for trio in trios[:3]:
-                    self.combinations.append({"type": "trio", "cards": trio})
-                    for card in trio:
-                        self.remove_from_hand(card)
-                self.has_laid_down = True
-                return True
-        
-        elif round_num == 3:  # Ronda 4: Una Seguidilla y Dos Tríos
+                self.trios_laid_down += 1
+                laid_down = True
+        # Bajar todas las seguidillas posibles
+        while self._has_sequence():
             sequence = self._get_sequence()
-            trios = self._get_trios(2)
-            if sequence and len(trios) >= 2:
+            if sequence:
                 self.combinations.append({"type": "sequence", "cards": sequence})
                 for card in sequence:
                     self.remove_from_hand(card)
-                
-                for trio in trios[:2]:
-                    self.combinations.append({"type": "trio", "cards": trio})
-                    for card in trio:
-                        self.remove_from_hand(card)
-                
-                self.has_laid_down = True
-                return True
-        
-        return False
-    
+                self.sequences_laid_down += 1
+                laid_down = True
+
+        # Marcar si cumplió el requisito mínimo de la ronda
+        if not self.has_completed_round_requirement:
+            if round_num == 0 and (self.trios_laid_down >= 1 or self.sequences_laid_down >= 1):
+                self.has_completed_round_requirement = True
+            elif round_num == 1 and self.sequences_laid_down >= 2:
+                self.has_completed_round_requirement = True
+            elif round_num == 2 and self.trios_laid_down >= 3:
+                self.has_completed_round_requirement = True
+            elif round_num == 3 and (self.trios_laid_down >= 1 and self.sequences_laid_down >= 1):
+                self.has_completed_round_requirement = True
+
+        if laid_down:
+            self.has_laid_down = True
+        return laid_down
+
     def can_add_to_combination(self, card, combination_idx, player_idx=None):
         """Verifica si una carta puede ser añadida a una combinación"""
         if player_idx is not None and player_idx != self.id and not self.has_laid_down:
@@ -220,7 +200,6 @@ class Player:
         return False
     
     def _has_sequence(self):
-        """Verifica si el jugador tiene una seguidilla en su mano"""
         # Agrupar cartas por palo
         suits = {}
         for card in self.hand:
@@ -230,45 +209,32 @@ class Player:
                 suits[card.suit] = []
             suits[card.suit].append(card)
         
-        # Contar Jokers disponibles
         joker_count = sum(1 for card in self.hand if card.is_joker)
         
-        # Verificar cada palo
         for suit, cards in suits.items():
-            # Ordenar cartas por valor
             cards.sort(key=lambda c: VALUES.index(c.value))
-            
-            # Buscar secuencias potenciales
             for i in range(len(cards)):
                 sequence = [cards[i]]
                 available_jokers = joker_count
-                
+                last_val = VALUES.index(cards[i].value)
                 for j in range(i + 1, len(cards)):
-                    next_val_idx = VALUES.index(sequence[-1].value) + 1
-                    curr_val_idx = VALUES.index(cards[j].value)
-                    
-                    # Si es el siguiente valor, añadirlo a la secuencia
-                    if curr_val_idx == next_val_idx:
+                    next_val = VALUES.index(cards[j].value)
+                    gap = next_val - last_val - 1
+                    if gap == 0:
                         sequence.append(cards[j])
-                    # Si hay un hueco y tenemos Jokers, usar un Joker
-                    elif curr_val_idx > next_val_idx and available_jokers > 0:
-                        # Calcular cuántos Jokers necesitamos
-                        jokers_needed = curr_val_idx - next_val_idx
-                        if jokers_needed <= available_jokers:
-                            # Añadir los Jokers necesarios
-                            for _ in range(jokers_needed):
-                                sequence.append(None)  # Placeholder para Joker
-                                available_jokers -= 1
-                            sequence.append(cards[j])
-                    
-                    # Si la secuencia es lo suficientemente larga, hemos terminado
-                    if len(sequence) >= 4:
-                        return True
-                
-                # Si la secuencia es casi lo suficientemente larga y tenemos Jokers, completarla
+                        last_val = next_val
+                    elif gap > 0 and available_jokers >= gap:
+                        sequence.extend([None]*gap)  # Jokers como comodines
+                        sequence.append(cards[j])
+                        available_jokers -= gap
+                        last_val = next_val
+                    else:
+                        break
                 if len(sequence) + available_jokers >= 4:
                     return True
-        
+        # Si hay suficientes Jokers, pueden formar una secuencia solos
+        if joker_count >= 4:
+            return True
         return False
     
     def _count_sequences(self):
@@ -397,7 +363,7 @@ class Player:
         return trios
     
     def _get_sequence(self):
-        """Obtiene una seguidilla de la mano del jugador"""
+        """Obtiene una seguidilla de la mano del jugador, usando Jokers como comodines."""
         # Agrupar cartas por palo
         suits = {}
         for card in self.hand:
@@ -406,57 +372,71 @@ class Player:
             if card.suit not in suits:
                 suits[card.suit] = []
             suits[card.suit].append(card)
-        
+
         # Contar Jokers disponibles
         jokers = [card for card in self.hand if card.is_joker]
-        
+
         # Verificar cada palo
         for suit, cards in suits.items():
             # Ordenar cartas por valor
             cards.sort(key=lambda c: VALUES.index(c.value))
-            
-            # Buscar la secuencia más larga
-            best_sequence = None
-            max_length = 0
-            
+
+            # Probar todas las posibles secuencias de inicio
             for i in range(len(cards)):
                 sequence = [cards[i]]
                 available_jokers = jokers.copy()
-                
-                for j in range(i + 1, len(cards)):
-                    next_val_idx = VALUES.index(sequence[-1].value) + 1
-                    curr_val_idx = VALUES.index(cards[j].value)
-                    
-                    # Si es el siguiente valor, añadirlo a la secuencia
-                    if curr_val_idx == next_val_idx:
-                        sequence.append(cards[j])
-                    # Si hay un hueco y tenemos Jokers, usar un Joker
-                    elif curr_val_idx > next_val_idx and available_jokers:
-                        # Calcular cuántos Jokers necesitamos
-                        jokers_needed = curr_val_idx - next_val_idx
-                        if jokers_needed <= len(available_jokers):
-                            # Añadir los Jokers necesarios
-                            for _ in range(jokers_needed):
-                                sequence.append(available_jokers.pop(0))
-                            sequence.append(cards[j])
-                
-                # Si la secuencia es lo suficientemente larga, guardarla
-                if len(sequence) >= 4 and len(sequence) > max_length:
-                    best_sequence = sequence
-                    max_length = len(sequence)
-                
-                # Si la secuencia es casi lo suficientemente larga y tenemos Jokers, completarla
-                elif len(sequence) + len(available_jokers) >= 4 and len(sequence) + len(available_jokers) > max_length:
-                    # Añadir los Jokers necesarios al final
-                    while len(sequence) < 4:
+                last_val_idx = VALUES.index(cards[i].value)
+
+                for next_val_idx in range(last_val_idx + 1, len(VALUES)):
+                    # ¿Ya tenemos la carta siguiente?
+                    found = False
+                    for c in cards:
+                        if VALUES.index(c.value) == next_val_idx and c not in sequence:
+                            sequence.append(c)
+                            found = True
+                            break
+                    if not found:
+                        # Si no está, ¿tenemos un Joker para rellenar?
+                        if available_jokers:
+                            sequence.append(available_jokers.pop(0))
+                        else:
+                            break  # No podemos continuar la secuencia
+
+                # Si la secuencia es suficientemente larga, la devolvemos
+                if len(sequence) >= 4:
+                    return sequence
+
+                # También probar secuencias más cortas usando Jokers al principio
+                # (Por ejemplo, si tenemos 7-8-9 y dos Jokers, podríamos hacer 5-6-7-8-9)
+                for offset in range(1, min(len(VALUES), len(jokers) + 1)):
+                    sequence = []
+                    available_jokers = jokers.copy()
+                    start_val_idx = VALUES.index(cards[i].value) - offset
+                    if start_val_idx < 0:
+                        continue
+                    # Añadir Jokers al principio
+                    for _ in range(offset):
                         sequence.append(available_jokers.pop(0))
-                    
-                    best_sequence = sequence
-                    max_length = len(sequence)
-            
-            if best_sequence and len(best_sequence) >= 4:
-                return best_sequence
-        
+                    # Añadir cartas reales
+                    for idx in range(start_val_idx, VALUES.index(cards[i].value) + 1):
+                        found = False
+                        for c in cards:
+                            if VALUES.index(c.value) == idx and c not in sequence:
+                                sequence.append(c)
+                                found = True
+                                break
+                        if not found:
+                            if available_jokers:
+                                sequence.append(available_jokers.pop(0))
+                            else:
+                                break
+                    if len(sequence) >= 4:
+                        return sequence
+
+        # Si hay suficientes Jokers, pueden formar una secuencia solos
+        if len(jokers) >= 4:
+            return jokers[:4]
+
         return None
     
     def _get_sequences(self, count):
@@ -482,29 +462,40 @@ class Player:
         
         return sequences
     def detect_trios(self):
-        """Detecta tríos en la mano (sin quitarlos)"""
+        """Detecta tríos (3 cartas del mismo valor) incluyendo Jokers"""
         from collections import defaultdict
+
         value_map = defaultdict(list)
+        jokers = [card for card in self.hand if card.is_joker]
+
         for card in self.hand:
             if not card.is_joker:
                 value_map[card.value].append(card)
-    
+
         trios = []
+
         for value, cards in value_map.items():
-            if len(cards) >= 3:
-                trios.append(cards)
+            needed = 3 - len(cards)
+            if needed <= len(jokers):
+                # Crear trío con cartas + jokers necesarios
+                trio = cards + jokers[:needed]
+                trios.append(trio)
+
         return trios
 
 
+
     def detect_seguidillas(self):
-        """Detecta seguidillas (4+ cartas consecutivas del mismo palo)"""
+        """Detecta seguidillas (4+ cartas consecutivas del mismo palo) incluyendo Jokers"""
         from collections import defaultdict
 
-        # Orden de valores
         order = {val: i for i, val in enumerate(VALUES)}
-
-        #Agrupar cartas por palo
         suits = defaultdict(list)
+
+        # Separar jokers
+        jokers = [card for card in self.hand if card.is_joker]
+
+        # Agrupar no-jokers por palo
         for card in self.hand:
             if not card.is_joker and card.value in order:
                 suits[card.suit].append(card)
@@ -512,27 +503,49 @@ class Player:
         seguidillas = []
 
         for suit, cards in suits.items():
-            # Ordenar las cartas por el índice en VALUES
+            if not cards:
+                continue
+
+            # Ordenar por valor
             sorted_cards = sorted(cards, key=lambda c: order[c.value])
 
-            # Buscar secuencias de 4 o más consecutivas
-            temp = [sorted_cards[0]]
-            for i in range(1, len(sorted_cards)):
-                prev_idx = order[sorted_cards[i - 1].value]
-                curr_idx = order[sorted_cards[i].value]
-                if curr_idx == prev_idx + 1:
-                    temp.append(sorted_cards[i])
-                elif curr_idx == prev_idx:
-                    continue  # Ignorar duplicados
-                else:
-                    if len(temp) >= 4:
-                        seguidillas.append(temp[:])
-                    temp = [sorted_cards[i]]
-        
-        if len(temp) >= 4:
-            seguidillas.append(temp)
+            for i in range(len(sorted_cards)):
+                sequence = [sorted_cards[i]]
+                used_jokers = []
+
+                for j in range(i + 1, len(sorted_cards)):
+                    prev_val = order[sequence[-1].value]
+                    curr_val = order[sorted_cards[j].value]
+
+                    gap = curr_val - prev_val
+
+                    if gap == 0:
+                        continue  # duplicado, saltar
+                    elif gap == 1:
+                        sequence.append(sorted_cards[j])
+                    elif gap > 1:
+                        # Necesitamos gap-1 jokers
+                        needed = gap - 1
+                        if len(jokers) - len(used_jokers) >= needed:
+                            # Añadir jokers intermedios
+                            for _ in range(needed):
+                                sequence.append(jokers[len(used_jokers)])
+                                used_jokers.append(jokers[len(used_jokers)])
+                            sequence.append(sorted_cards[j])
+                        else:
+                            break  # no se puede continuar
+
+                    # Si la secuencia es válida (4+), guárdala
+                    if len(sequence) >= 4 and sequence not in seguidillas:
+                        seguidillas.append(sequence.copy())
+
+                # También verificar secuencias cortas al final
+                if len(sequence) >= 4 and sequence not in seguidillas:
+                    seguidillas.append(sequence.copy())
 
         return seguidillas
+
+
 
 
     def to_dict(self):
@@ -551,9 +564,13 @@ class Player:
             'is_mano': self.is_mano,
             'has_laid_down': self.has_laid_down,
             'took_discard': self.took_discard,
-            'took_penalty': self.took_penalty
+            'took_penalty': self.took_penalty,
+            'has_laid_down_trio': self.has_laid_down_trio,
+            'has_laid_down_sequence': self.has_laid_down_sequence,
+            'sequences_laid_down': self.sequences_laid_down,
+            'trios_laid_down': self.trios_laid_down
         }
-    
+
     @staticmethod
     def from_dict(data):
         player = Player(data['id'], data['name'])
@@ -570,4 +587,8 @@ class Player:
         player.has_laid_down = data['has_laid_down']
         player.took_discard = data['took_discard']
         player.took_penalty = data['took_penalty']
+        player.has_laid_down_trio = data.get('has_laid_down_trio', False)
+        player.has_laid_down_sequence = data.get('has_laid_down_sequence', False)
+        player.sequences_laid_down = data.get('sequences_laid_down', 0)
+        player.trios_laid_down = data.get('trios_laid_down', 0)
         return player

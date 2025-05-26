@@ -167,7 +167,16 @@ def main():
             card_font = pygame.font.SysFont("dejavusans", 32)
 
         ui = UI(screen, card_font=card_font)
+        if hasattr(game, "cards_to_deal"):
+            ui.animate_deal(game)  # Animación antes de repartir
 
+            # Ahora sí, reparte las cartas realmente
+            for player, cards in zip(game.players, game.cards_to_deal):
+                player.add_to_hand(cards)
+            del game.cards_to_deal  # Limpia el atributo temporal
+            # Si eres host, sincroniza el estado actualizado
+            if network.is_host():
+                network.send_game_state(game.to_dict())
         if network.is_host():
             network.game_action_handler = game.handle_network_action
     except Exception as e:
@@ -254,6 +263,7 @@ def main():
         screen.fill(BG_COLOR)
         ui.draw(game)
         pygame.display.flip()
+        
         
         clock.tick(FPS)
     

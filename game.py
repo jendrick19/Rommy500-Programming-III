@@ -45,9 +45,13 @@ class Game:
                 self.check_deck_duplicates("Inicio juego → ")
                 self.deck_checked = True
 
+            # Preparar cartas a repartir
+            cards_to_deal = []
             for player in self.players:
-                player.add_to_hand(self.deck.deal(10))
-            
+                cards = self.deck.deal(10)
+                cards_to_deal.append(cards)
+            # No las añadas aún a la mano
+
             # Colocar la primera carta en el descarte
             self.discard_pile.add(self.deck.deal())
             
@@ -57,6 +61,9 @@ class Game:
             # Enviar el estado inicial a todos los jugadores
             self.network.send_game_state(self.to_dict())
             print("Estado inicial del juego enviado a todos los jugadores")
+            
+            # Guardar temporalmente las cartas a repartir para la animación
+            self.cards_to_deal = cards_to_deal
         except Exception as e:
             print(f"Error al inicializar el juego: {e}")
             traceback.print_exc()

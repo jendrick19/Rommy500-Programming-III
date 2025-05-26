@@ -221,12 +221,11 @@ class UI:
         for i, card in enumerate(player.hand):
             card_x = hand_x + i * (CARD_WIDTH + card_spacing)
             card_y = hand_y
-            
-            # Destacar carta seleccionada
+            # Si está seleccionada, subirla
             if i == self.selected_card:
+                card_y -= 20  # Sube la carta 20 píxeles
                 pygame.draw.rect(self.screen, (255, 255, 0), 
                                 (card_x - 5, card_y - 5, CARD_WIDTH + 10, CARD_HEIGHT + 10), 3, border_radius=5)
-            
             # Resaltar en azul si está en un trío o seguidilla
             if card in cards_in_combos:
                 pygame.draw.rect(self.screen, (0, 100, 255),  # Azul
@@ -521,3 +520,91 @@ class UI:
         btn_text = font.render("Siguiente ronda", True, (255, 255, 255))
         self.screen.blit(btn_text, (button_rect.centerx - btn_text.get_width() // 2, button_rect.centery - btn_text.get_height() // 2))
         self.action_buttons = [("next_round", button_rect)]
+
+    def animate_deal(self, game):
+        """Animación de reparto de cartas a todos los jugadores antes de que aparezcan en la mano"""
+        num_cards = 10
+        # Prepara manos temporales vacías para la animación
+        temp_hands = [[] for _ in game.players]
+        for card_num in range(num_cards):
+            for pid, player in enumerate(game.players):
+                # Calcula posición destino (mano del jugador)
+                if pid == game.player_id:
+                    dest_x = 20 + card_num * (CARD_WIDTH + 5)
+                    dest_y = SCREEN_HEIGHT - 220
+                else:
+                    # Puedes ajustar estas posiciones para otros jugadores
+                    dest_x = 100 + pid * 120
+                    dest_y = 100
+
+                # Animar carta desde el mazo
+                for t in range(0, 21):
+                    self.screen.fill(BG_COLOR)
+                    # Dibuja el estado actual del juego SIN cartas en la mano real,
+                    # pero con las cartas ya animadas en temp_hands
+                    self.draw_deal_state(game, temp_hands)
+                    # Interpolación lineal desde el mazo (20,70)
+                    x = 20 + (dest_x - 20) * t // 20
+                    y = 70 + (dest_y - 70) * t // 20
+                    # Dibuja la carta en movimiento (boca abajo para todos)
+                    pygame.draw.rect(self.screen, CARD_BACK_COLOR, (x, y, CARD_WIDTH, CARD_HEIGHT), border_radius=5)
+                    pygame.draw.rect(self.screen, (0, 0, 0), (x, y, CARD_WIDTH, CARD_HEIGHT), 2, border_radius=5)
+                    pygame.display.flip()
+                    pygame.time.delay(12)
+
+                # Al terminar la animación, añade la carta a la mano temporal y muestra la carta (boca arriba solo para el jugador local)
+                card = game.cards_to_deal[pid][card_num]
+                temp_hands[pid].append(card)
+                self.screen.fill(BG_COLOR)
+                self.draw_deal_state(game, temp_hands, reveal_last_for_player=pid)
+                pygame.display.flip()
+                pygame.time.delay(80)
+
+        # Redibuja el estado final (las cartas aparecerán después en la mano real)
+        self.draw(game)
+        pygame.display.flip()
+
+    def draw_deal_state(self, game, temp_hands, reveal_last_for_player=None):
+        """Dibuja el estado del juego durante el reparto, usando manos temporales"""
+        # Mazo y descarte
+        self.draw_deck(game, 20, 70)
+        self.draw_discard_pile(game, 120, 70)
+        # Jugadores (solo muestra backs para otros jugadores)
+        for pid, player in enumerate(game.players):
+            if pid == game.player_id:
+                # Mano local: muestra cartas boca arriba, pero solo las de temp_hands
+                hand = temp_hands[pid]
+                hand_x = 20
+                hand_y = SCREEN_HEIGHT - 220
+                card_spacing = min(CARD_SPACING, (SCREEN_WIDTH - 40) / max(1, len(hand)) - CARD_WIDTH)
+                for i, card in enumerate(hand):
+                    card_x = hand_x + i * (CARD_WIDTH + card_spacing)
+                    card_y = hand_y
+                    # Si es la última carta y reveal_last_for_player==pid, mostrar boca arriba
+                    if reveal_last_for_player == pid and i == len(hand) - 1:
+                        self.draw_card(card, card_x, card_y)
+                    else:
+                        # Mostrar boca abajo
+                        pygame.draw.rect(self.screen, CARD_BACK_COLOR, (card_x, card_y, CARD_WIDTH, CARD_HEIGHT), border_radius=5)
+                        pygame.draw.rect(self.screen, (0, 0, 0), (card_x, card_y, CARD_WIDTH, CARD_HEIGHT), 2, border_radius=5)
+            else:
+                # Otros jugadores: solo backs
+                hand = temp_hands[pid]
+                hand_x = 100 + pid * 120
+                hand_y = 100
+                for i in range(len(hand)):
+                    card_x = hand_x + i * 10
+                    card_y = hand_y
+                    pygame.draw.rect(self.screen, CARD_BACK_COLOR, (card_x, card_y, CARD_WIDTH, CARD_HEIGHT), border_radius=5)
+                    pygame.draw.rect(self.screen, (0, 0, 0), (card_x, card_y, CARD_WIDTH, CARD_HEIGHT), 2, border_radius=5)
+    def animate_card_move(self, start_pos, end_pos, card):
+        """Animación de movimiento de una carta"""
+        for t in range(0, 21):
+            self.screen.fill(BG_COLOR)
+            # Dibuja el estado actual del juego (sin la carta en movimiento)
+            # ... (puedes llamar a self.draw(game) si no interfiere)
+            x = start_pos[0] + (end_pos[0] - start_pos[0]) * t // 20
+            y = start_pos[1] + (end_pos[1] - start_pos[1]) * t // 20
+            self.draw_card(card, x, y)
+            pygame.display.flip()
+            pygame.time.delay(10)

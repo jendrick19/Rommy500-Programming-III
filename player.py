@@ -462,29 +462,40 @@ class Player:
         
         return sequences
     def detect_trios(self):
-        """Detecta tríos en la mano (sin quitarlos)"""
+        """Detecta tríos (3 cartas del mismo valor) incluyendo Jokers"""
         from collections import defaultdict
+
         value_map = defaultdict(list)
+        jokers = [card for card in self.hand if card.is_joker]
+
         for card in self.hand:
             if not card.is_joker:
                 value_map[card.value].append(card)
-    
+
         trios = []
+
         for value, cards in value_map.items():
-            if len(cards) >= 3:
-                trios.append(cards)
+            needed = 3 - len(cards)
+            if needed <= len(jokers):
+                # Crear trío con cartas + jokers necesarios
+                trio = cards + jokers[:needed]
+                trios.append(trio)
+
         return trios
 
 
+
     def detect_seguidillas(self):
-        """Detecta seguidillas (4+ cartas consecutivas del mismo palo)"""
+        """Detecta seguidillas (4+ cartas consecutivas del mismo palo) incluyendo Jokers"""
         from collections import defaultdict
 
-        # Orden de valores
         order = {val: i for i, val in enumerate(VALUES)}
-
-        #Agrupar cartas por palo
         suits = defaultdict(list)
+
+        # Separar jokers
+        jokers = [card for card in self.hand if card.is_joker]
+
+        # Agrupar no-jokers por palo
         for card in self.hand:
             if not card.is_joker and card.value in order:
                 suits[card.suit].append(card)
@@ -492,27 +503,49 @@ class Player:
         seguidillas = []
 
         for suit, cards in suits.items():
-            # Ordenar las cartas por el índice en VALUES
+            if not cards:
+                continue
+
+            # Ordenar por valor
             sorted_cards = sorted(cards, key=lambda c: order[c.value])
 
-            # Buscar secuencias de 4 o más consecutivas
-            temp = [sorted_cards[0]]
-            for i in range(1, len(sorted_cards)):
-                prev_idx = order[sorted_cards[i - 1].value]
-                curr_idx = order[sorted_cards[i].value]
-                if curr_idx == prev_idx + 1:
-                    temp.append(sorted_cards[i])
-                elif curr_idx == prev_idx:
-                    continue  # Ignorar duplicados
-                else:
-                    if len(temp) >= 4:
-                        seguidillas.append(temp[:])
-                    temp = [sorted_cards[i]]
-        
-        if len(temp) >= 4:
-            seguidillas.append(temp)
+            for i in range(len(sorted_cards)):
+                sequence = [sorted_cards[i]]
+                used_jokers = []
+
+                for j in range(i + 1, len(sorted_cards)):
+                    prev_val = order[sequence[-1].value]
+                    curr_val = order[sorted_cards[j].value]
+
+                    gap = curr_val - prev_val
+
+                    if gap == 0:
+                        continue  # duplicado, saltar
+                    elif gap == 1:
+                        sequence.append(sorted_cards[j])
+                    elif gap > 1:
+                        # Necesitamos gap-1 jokers
+                        needed = gap - 1
+                        if len(jokers) - len(used_jokers) >= needed:
+                            # Añadir jokers intermedios
+                            for _ in range(needed):
+                                sequence.append(jokers[len(used_jokers)])
+                                used_jokers.append(jokers[len(used_jokers)])
+                            sequence.append(sorted_cards[j])
+                        else:
+                            break  # no se puede continuar
+
+                    # Si la secuencia es válida (4+), guárdala
+                    if len(sequence) >= 4 and sequence not in seguidillas:
+                        seguidillas.append(sequence.copy())
+
+                # También verificar secuencias cortas al final
+                if len(sequence) >= 4 and sequence not in seguidillas:
+                    seguidillas.append(sequence.copy())
 
         return seguidillas
+
+
 
 
     def to_dict(self):

@@ -227,6 +227,22 @@ class UI:
                     (card_x - 3, card_y - 3, CARD_WIDTH + 6, CARD_HEIGHT + 6), 3, border_radius=5)
 
             self.draw_card(card, card_x, card_y)
+            self.draw_local_player_combinations(player, hand_y)
+
+    def draw_local_player_combinations(self, player, base_y):
+        """Dibuja las combinaciones bajadas del jugador local debajo de su mano"""
+        title = self.font.render("Cartas bajadas:", True, TEXT_COLOR)
+        self.screen.blit(title, (20, base_y + CARD_HEIGHT + 20))
+    
+        for i, combo in enumerate(player.combinations):
+            label = self.font.render("Trío" if combo["type"] == "trio" else "Seguidilla", True, TEXT_COLOR)
+            self.screen.blit(label, (20, base_y + CARD_HEIGHT + 50 + i * 40))
+
+            for j, card in enumerate(combo["cards"]):
+                x = 120 + j * 30
+                y = base_y + CARD_HEIGHT + 50 + i * 40
+                self.draw_mini_card(card, x, y)
+
     
     def draw_card(self, card, x, y):
         """Dibuja una carta"""

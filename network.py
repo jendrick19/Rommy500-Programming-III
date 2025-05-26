@@ -370,3 +370,47 @@ class Network:
             self.socket.close()
         except:
             pass
+
+class NetworkOptimized:
+    def __init__(self):
+        self.compression = True  # Comprimir mensajes JSON
+        self.delta_sync = True   # Solo enviar cambios, no estado completo
+    
+    def send_delta_update(self, changes):
+        """Envía solo los cambios en lugar del estado completo"""
+        compressed_data = self.compress_json(changes)
+        return self.send(compressed_data)
+
+# 2. Sistema de logging mejorado
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('rummy_game.log'),
+        logging.StreamHandler()
+    ]
+)
+
+# 3. Configuración externa
+import configparser
+config = configparser.ConfigParser()
+config.read('game_config.ini')
+
+# 4. Tests unitarios
+import unittest
+class TestGameLogic(unittest.TestCase):
+    def test_trio_formation(self):
+        player = player(0, "Test")
+        # Añadir cartas de prueba
+        assert player._has_trio() == True
+
+# 5. Persistencia de partidas
+import pickle
+def save_game_state(game, filename):
+    with open(filename, 'wb') as f:
+        pickle.dump(game.to_dict(), f)
+
+def load_game_state(filename):
+    with open(filename, 'rb') as f:
+        return pickle.load(f)

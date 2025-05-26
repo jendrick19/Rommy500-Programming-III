@@ -20,130 +20,127 @@ def main():
     input_active = False
     input_text = ""
     input_rect = pygame.Rect(SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT // 2, 300, 32)
-    
+    showing_rules = False
+
     while network_mode is None:
         screen.fill(BG_COLOR)
-        
-        # Dibujar título
-        title_font = pygame.font.SysFont(None, 48)
-        title_text = title_font.render("Rummy 500", True, TEXT_COLOR)
-        screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 100))
-        
-        # Dibujar botones
-        font = pygame.font.SysFont(None, 32)
-        host_text = font.render("Crear partida", True, TEXT_COLOR)
-        join_text = font.render("Unirse a partida", True, TEXT_COLOR)
-        rules_text = font.render("Rules", True, TEXT_COLOR)
-        
-        host_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 100, 200, 50)
-        join_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 30, 200, 50)
-        rules_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 60, 200, 50)
-        
-        pygame.draw.rect(screen, BUTTON_COLOR, host_rect, border_radius=5)
-        pygame.draw.rect(screen, BUTTON_COLOR, join_rect, border_radius=5)
-        pygame.draw.rect(screen, BUTTON_COLOR, rules_rect, border_radius=5)
-
-        
-        screen.blit(host_text, (host_rect.centerx - host_text.get_width() // 2, host_rect.centery - host_text.get_height() // 2))
-        screen.blit(join_text, (join_rect.centerx - join_text.get_width() // 2, join_rect.centery - join_text.get_height() // 2))
-        screen.blit(rules_text, (rules_rect.centerx - rules_text.get_width() // 2, rules_rect.centery - rules_text.get_height() // 2))
-    
-        # Si está en modo de unirse, mostrar campo de entrada para IP
-        if input_active:
-            # Instrucciones
+        if showing_rules:
+            rules_font = pygame.font.SysFont(None, 24)
+            rules_texts = [
+                "Reglas del Rummy 500:",
+                "Objetivo: evitar alcanzar o superar los 500 puntos.",
+                "El ganador es quien tenga la menor puntuación total o el último que no haya llegado a 500 puntos.",
+                "Jugadores: 2-13. Se usa un mazo de 52 cartas + 2 Joker. cada 3 jugadores se añade un mazo extra.",
+                "Cómo Jugar:",
+                "Cada jugador recibe 10 cartas. Se inicia un descarte central. Un jugador es designado MANO.",
+                "El MANO tiene la primera opción de tomar la carta central. Si la toma, descarta una carta para mantener 10 en mano.",
+                "Si el MANO no la toma, otros jugadores pueden hacerlo",
+                "Pero el primero que la tome roba una carta adicional del mazo como penalización, quedando con 12 cartas.",
+                "Si nadie la toma, la carta se quema (descarta).",
+                "Durante el turno regular, el jugador puede:",
+                "- Tomar la carta superior del mazo boca abajo (si no tomó la central o si fue por penalización).",
+                "- Bajarse: Mostrar combinaciones válidas sobre la mesa. Se puede usar un Joker para completar una combinación, ",
+                "y un Joker ya bajado puede ser reemplazado por la carta que representa y usado en otra combinación propia.",
+                "- Agregar cartas: Añadir cartas a sus propias combinaciones ya bajadas.",
+                "- Descartar: Colocar una carta boca arriba para terminar el turno.",
+                "Combinaciones:",
+                "- Trío: Tres cartas del mismo valor.",
+                "- Seguidilla: Cuatro cartas consecutivas del mismo palo.",
+                "Rondas de Juego (Combinaciones Requeridas para Bajarse):",
+                "- Un Trío y una Seguidilla.",
+                "- Dos Seguidillas.",
+                "- Tres Tríos.",
+                "- Ronda Completa: Una Seguidilla y Dos Tríos. Para finalizar, deben descartarse las diez cartas en un solo turno.",
+                "Puntuación:",
+                "- Cartas 2-9: 5 puntos.",
+                "- Cartas 10-K: 10 puntos.",
+                "- As: 15 puntos.",
+                "- Joker: 25 puntos. Al final de una ronda, los jugadores que no se bajaron suman los puntos de las cartas en su mano.",
+                "Fin de la Ronda: Termina cuando un jugador se queda sin cartas al bajar todas sus combinaciones (y descartar si es necesario). ",
+                "Este jugador actuará primero en la siguiente ronda.",
+                "Fin de la Partida: El juego sigue por las cuatro rondas hasta que quede solo un jugador con menos de 500 puntos.",
+            ]
+            for i, line in enumerate(rules_texts):
+                text_surface = rules_font.render(line, True, TEXT_COLOR)
+                screen.blit(text_surface,(20, 20 + i * 21))
+            pygame.display.flip()
+        elif input_active:
+            font = pygame.font.SysFont(None, 32)
             info_text = font.render("Introduce IP:Puerto (ej: 127.0.0.1:5555)", True, TEXT_COLOR)
             screen.blit(info_text, (SCREEN_WIDTH // 2 - info_text.get_width() // 2, SCREEN_HEIGHT // 2 - 30))
-            
-            pygame.draw.rect(screen, INPUT_ACTIVE_COLOR if input_active else INPUT_INACTIVE_COLOR, input_rect, border_radius=5)
+            pygame.draw.rect(screen, INPUT_ACTIVE_COLOR, input_rect, border_radius=5)
             input_surface = font.render(input_text, True, TEXT_COLOR)
             screen.blit(input_surface, (input_rect.x + 5, input_rect.y + 5))
-            
             # Botón de confirmar
             confirm_rect = pygame.Rect(SCREEN_WIDTH // 2 - 60, SCREEN_HEIGHT // 2 + 50, 120, 32)
             pygame.draw.rect(screen, BUTTON_COLOR, confirm_rect, border_radius=5)
             confirm_text = font.render("Confirmar", True, TEXT_COLOR)
             screen.blit(confirm_text, (confirm_rect.centerx - confirm_text.get_width() // 2, confirm_rect.centery - confirm_text.get_height() // 2))
-        
-        pygame.display.flip()
+            pygame.display.flip()
+        else:
+            # Dibujar título
+            title_font = pygame.font.SysFont(None, 48)
+            title_text = title_font.render("Rummy 500", True, TEXT_COLOR)
+            screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 100))
+            
+            # Dibujar botones
+            font = pygame.font.SysFont(None, 32)
+            host_text = font.render("Crear partida", True, TEXT_COLOR)
+            join_text = font.render("Unirse a partida", True, TEXT_COLOR)
+            rules_text = font.render("Reglas", True, TEXT_COLOR)
+            
+            host_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 100, 200, 50)
+            join_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 30, 200, 50)
+            rules_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 60, 200, 50)
+            
+            pygame.draw.rect(screen, BUTTON_COLOR, host_rect, border_radius=5)
+            pygame.draw.rect(screen, BUTTON_COLOR, join_rect, border_radius=5)
+            pygame.draw.rect(screen, BUTTON_COLOR, rules_rect, border_radius=5)
+
+            
+            screen.blit(host_text, (host_rect.centerx - host_text.get_width() // 2, host_rect.centery - host_text.get_height() // 2))
+            screen.blit(join_text, (join_rect.centerx - join_text.get_width() // 2, join_rect.centery - join_text.get_height() // 2))
+            screen.blit(rules_text, (rules_rect.centerx - rules_text.get_width() // 2, rules_rect.centery - rules_text.get_height() // 2))
+            pygame.display.flip()
+        # Si está en modo de unirse, mostrar campo de entrada para IP
+           
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if host_rect.collidepoint(event.pos):
-                    network_mode = "host"
-                elif join_rect.collidepoint(event.pos):
-                    input_active = True
-                elif input_active and confirm_rect.collidepoint(event.pos):
-                    network_mode = "join"
-                    ip_address = input_text
-                elif rules_rect.collidepoint(event.pos):
-                    # Mostrar reglas del juego
-                    rules_screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-                    rules_screen.fill(BG_COLOR)
-                    rules_font = pygame.font.SysFont(None, 24)
-                    rules_texts = [
-                        "Reglas del Rummy 500:",
-                        "Objetivo: evitar alcanzar o superar los 500 puntos.",
-                        "El ganador es quien tenga la menor puntuación total o el último que no haya llegado a 500 puntos.",
-                        "Jugadores: 2-13. Se usa un mazo de 52 cartas + 2 Joker. cada 3 jugadores se añade un mazo extra.",
-                        "Cómo Jugar:",
-                        "Cada jugador recibe 10 cartas. Se inicia un descarte central. Un jugador es designado MANO.",
-                        "El MANO tiene la primera opción de tomar la carta central. Si la toma, descarta una carta para mantener 10 en mano.",
-                        "Si el MANO no la toma, otros jugadores pueden hacerlo",
-                        "Pero el primero que la tome roba una carta adicional del mazo como penalización, quedando con 12 cartas.",
-                        "Si nadie la toma, la carta se quema (descarta).",
-                        "Durante el turno regular, el jugador puede:",
-                        "- Tomar la carta superior del mazo boca abajo (si no tomó la central o si fue por penalización).",
-                        "- Bajarse: Mostrar combinaciones válidas sobre la mesa. Se puede usar un Joker para completar una combinación, ",
-                        "y un Joker ya bajado puede ser reemplazado por la carta que representa y usado en otra combinación propia.",
-                        "- Agregar cartas: Añadir cartas a sus propias combinaciones ya bajadas.",
-                        "- Descartar: Colocar una carta boca arriba para terminar el turno.",
-                        "Combinaciones:",
-                        "- Trío: Tres cartas del mismo valor.",
-                        "- Seguidilla: Cuatro cartas consecutivas del mismo palo.",
-                        "Rondas de Juego (Combinaciones Requeridas para Bajarse):",
-                        "- Un Trío y una Seguidilla.",
-                        "- Dos Seguidillas.",
-                        "- Tres Tríos.",
-                        "- Ronda Completa: Una Seguidilla y Dos Tríos. Para finalizar, deben descartarse las diez cartas en un solo turno.",
-                        "Puntuación:",
-                        "- Cartas 2-9: 5 puntos.",
-                        "- Cartas 10-K: 10 puntos.",
-                        "- As: 15 puntos.",
-                        "- Joker: 25 puntos. Al final de una ronda, los jugadores que no se bajaron suman los puntos de las cartas en su mano.",
-                        "Fin de la Ronda: Termina cuando un jugador se queda sin cartas al bajar todas sus combinaciones (y descartar si es necesario). ",
-                        "Este jugador actuará primero en la siguiente ronda.",
-                        "Fin de la Partida: El juego sigue por las cuatro rondas hasta que quede solo un jugador con menos de 500 puntos.",
-                    ]
-                    for i, line in enumerate(rules_texts):
-                        text_surface = rules_font.render(line, True, TEXT_COLOR)
-                        rules_screen.blit(text_surface,(20, 20 + i * 21))
-                    pygame.display.flip()
-                
-                # Esperar a que el usuario cierre la ventana de reglas
-                waiting_for_close = True
-                while waiting_for_close:
-                    for event in pygame.event.get():
-                        if event.type == pygame.MOUSEBUTTONDOWN:
-                            if event.button == 1:
-                                waiting_for_close = False
-                                main()  # Volver al menú principal
-                        if event.type == pygame.QUIT:
-                            pygame.quit()
-                            sys.exit()
 
-            if event.type == pygame.KEYDOWN:
-                if input_active:
+            if showing_rules:
+                # Cerrar reglas con cualquier clic o tecla
+                if event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN:
+                    showing_rules = False
+
+            elif input_active:
+                # Procesar solo eventos de input
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if confirm_rect.collidepoint(event.pos):
+                        network_mode = "join"
+                        ip_address = input_text
+                        input_active = False
+                elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN:
                         network_mode = "join"
                         ip_address = input_text
+                        input_active = False
                     elif event.key == pygame.K_BACKSPACE:
                         input_text = input_text[:-1]
                     else:
                         input_text += event.unicode
+
+            else:
+                # Procesar eventos normales del menú
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if host_rect.collidepoint(event.pos):
+                        network_mode = "host"
+                    elif join_rect.collidepoint(event.pos):
+                        input_active = True
+                    elif rules_rect.collidepoint(event.pos):
+                        showing_rules = True
         
     # Inicializar red
     try:

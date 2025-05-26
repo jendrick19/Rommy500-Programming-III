@@ -40,7 +40,7 @@ class Game:
             self.players[0].is_mano = True
             
             # Repartir cartas
-            self.deck.reset()
+            
             if not self.deck_checked:
                 self.check_deck_duplicates("Inicio juego → ")
                 self.deck_checked = True
@@ -606,5 +606,5 @@ class Game:
     def check_deck_duplicates(self, mensaje=""):
         seen = set()
         for card in self.deck.cards:
-            seen.add((card.value, card.suit))
+            seen.add((card.value, card.suit, id(card)))
             print(f"{mensaje}Total cartas únicas: {len(seen)} / Total en mazo: {len(self.deck.cards)}")

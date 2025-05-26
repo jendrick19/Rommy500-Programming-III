@@ -8,6 +8,7 @@ class UI:
         self.font = pygame.font.SysFont(None, 24)
         self.title_font = pygame.font.SysFont(None, 36)
         self.card_font = card_font or pygame.font.SysFont(None, 32)
+        self.info_font = pygame.font.SysFont("dejavusans", 24, bold=True)
         self.selected_card = None
         self.selected_combination = None
         self.selected_player = None
@@ -227,7 +228,22 @@ class UI:
                     (card_x - 3, card_y - 3, CARD_WIDTH + 6, CARD_HEIGHT + 6), 3, border_radius=5)
 
             self.draw_card(card, card_x, card_y)
-            self.draw_local_player_combinations(player, hand_y)
+            # Dibujar combinaciones bajadas propias
+        if player.has_laid_down and player.combinations:
+            label_font = pygame.font.SysFont("dejavusans", 20, bold=True)
+            label = label_font.render("Cartas bajadas:", True, TEXT_COLOR)
+            self.screen.blit(label, (20, hand_y + CARD_HEIGHT + 20))
+
+            combo_y = hand_y + CARD_HEIGHT + 50
+            for combo in player.combinations:
+                combo_text = f"{combo['type'].capitalize()}:"
+                combo_label = self.font.render(combo_text, True, TEXT_COLOR)
+                self.screen.blit(combo_label, (30, combo_y))
+
+                for j, card in enumerate(combo['cards']):
+                    self.draw_mini_card(card, 110 + j * 20, combo_y)
+                combo_y += 30
+
 
     def draw_local_player_combinations(self, player, base_y):
         """Dibuja las combinaciones bajadas del jugador local debajo de su mano"""
@@ -384,7 +400,7 @@ class UI:
             message = f"Turno del Jugador {game.current_player_idx + 1}"
         
         message_surface = self.title_font.render(message, True, TEXT_COLOR)
-        self.screen.blit(message_surface, (SCREEN_WIDTH // 2 - message_surface.get_width() // 2, SCREEN_HEIGHT - 90))
+        self.screen.blit(message_surface, (SCREEN_WIDTH // 2 - message_surface.get_width() // 2, SCREEN_HEIGHT - 50))
 
     
     def handle_click(self, pos, game):

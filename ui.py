@@ -45,6 +45,11 @@ class UI:
         # Dibujar mensaje de estado
         self.draw_status_message(game)
     
+        # Si la ronda terminó, mostrar tabla de puntuaciones y botón
+        if game.state == GAME_STATE_ROUND_END:
+            self.draw_score_table(game)
+            return
+    
     def draw_deck(self, game, x, y):
         """Dibuja el mazo"""
         # Dibujar rectángulo para el mazo
@@ -359,16 +364,24 @@ class UI:
             self.action_buttons.append(("draw_discard", draw_discard_rect))
         
         # Botón para bajarse
-        if not player.has_laid_down and (player.took_discard or player.took_penalty):
+        show_lay_down = False
+        if (player.took_discard or player.took_penalty):
+            if game.round_num == 0:
+                # En ronda 1, permitir bajarse si puede (aunque ya haya bajado una vez)
+                if player.can_lay_down(game.round_num):
+                    show_lay_down = True
+            else:
+                # En otras rondas, solo si no se ha bajado aún
+                if not player.has_laid_down and player.can_lay_down(game.round_num):
+                    show_lay_down = True
+
+        if show_lay_down:
             lay_down_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 2, button_width, button_height)
-            can_lay_down = player.can_lay_down(game.round_num)
-            button_color = BUTTON_COLOR if can_lay_down else DISABLED_BUTTON_COLOR
-            pygame.draw.rect(self.screen, button_color, lay_down_rect, border_radius=5)
+            pygame.draw.rect(self.screen, BUTTON_COLOR, lay_down_rect, border_radius=5)
             lay_down_text = self.font.render("Bajarse", True, TEXT_COLOR)
             self.screen.blit(lay_down_text, (lay_down_rect.centerx - lay_down_text.get_width() // 2, 
                                             lay_down_rect.centery - lay_down_text.get_height() // 2))
-            if can_lay_down:
-                self.action_buttons.append(("lay_down", lay_down_rect))
+            self.action_buttons.append(("lay_down", lay_down_rect))
         
         # Botón para descartar
         if (player.took_discard or player.took_penalty) and self.selected_card is not None:
@@ -378,6 +391,12 @@ class UI:
             self.screen.blit(discard_text, (discard_rect.centerx - discard_text.get_width() // 2, 
                                             discard_rect.centery - discard_text.get_height() // 2))
             self.action_buttons.append(("discard", discard_rect))
+        # Botón para añadir a combinación
+        if (player.took_discard or player.took_penalty) and self.selected_card is not None and self.selected_combination is not None:
+            add_to_combination_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 4, button_width, button_height)
+            pygame.draw.rect(self.screen, BUTTON_COLOR, add_to_combination_rect, border_radius=5)
+            add_to_combination_text = self.font.render("Añadir a la combinación", True, TEXT_COLOR)
+            self.screen.blit(add_to_combination_text, (add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
     
     def draw_status_message(self, game):
         """Dibuja un mensaje de estado"""
@@ -410,27 +429,45 @@ class UI:
             if rect.collidepoint(pos):
                 self.handle_action(action, game)
                 return
-        
+
         # Verificar que el ID del jugador es válido
         if game.player_id < 0 or game.player_id >= len(game.players):
             return
-            
+
         # Verificar si se hizo clic en una carta de la mano
         player = game.players[game.player_id]
         hand_x = 20
         base_y = SCREEN_HEIGHT - 280
         hand_y = base_y + 60 
         card_spacing = min(CARD_SPACING, (SCREEN_WIDTH - 40) / max(1, len(player.hand)) - CARD_WIDTH)
-        
+
         for i, card in enumerate(player.hand):
             card_x = hand_x + i * (CARD_WIDTH + card_spacing)
             card_y = hand_y
             card_rect = pygame.Rect(card_x, card_y, CARD_WIDTH, CARD_HEIGHT)
-            
             if card_rect.collidepoint(pos):
                 self.selected_card = i
                 return
-    
+
+        # Verificar si se hizo clic en una combinación de cualquier jugador
+        found_combo = False
+        for pid, player in enumerate(game.players):
+            for cidx, combo in enumerate(player.combinations):
+                # Aquí debes calcular la posición real de cada combinación según tu lógica de draw_player_combinations
+                # Ejemplo básico (ajusta según tu UI real):
+                combo_x = 100 + pid * 200  # Ejemplo: separa por jugador
+                combo_y = 150 + cidx * 30  # Ejemplo: separa por combinación
+                combo_rect = pygame.Rect(combo_x, combo_y, 100, 25)
+                if combo_rect.collidepoint(pos):
+                    self.selected_combination = cidx
+                    self.selected_player = pid
+                    found_combo = True
+                    return
+        self.selected_card = None
+        self.selected_combination = None
+        self.selected_player = None
+        # Si no se hizo clic en nada relevante, simplemente no hacer nada (no romper)
+        return
     def handle_action(self, action, game):
         if action == "draw_deck":
             game.take_card_from_deck()
@@ -445,3 +482,42 @@ class UI:
             game.discard_card(self.selected_card)
             self.selected_card = None
             game.update()
+        elif action == "next_round":
+            if game.network.is_host():
+                game.start_new_round()
+                game.update()
+        elif action == "add_to_combo" and self.selected_card is not None and self.selected_combination is not None:
+            game.add_to_combination(
+                self.selected_card,
+                self.selected_combination,
+                self.selected_player
+            )
+            self.selected_card = None
+            self.selected_combination = None
+            self.selected_player = None
+            game.update()
+
+    def draw_score_table(self, game):
+        # Fondo semitransparente
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.set_alpha(220)
+        overlay.fill((30, 30, 30))
+        self.screen.blit(overlay, (0, 0))
+
+        title = self.title_font.render("Fin de la ronda", True, (255, 255, 0))
+        self.screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 100))
+
+        # Tabla de puntuaciones
+        font = pygame.font.SysFont(None, 36)
+        y = 180
+        for player in sorted(game.players, key=lambda p: -p.score):
+            text = font.render(f"{player.name}: {player.score} puntos", True, (255, 255, 255))
+            self.screen.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, y))
+            y += 50
+
+        # Botón para continuar
+        button_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, y + 40, 200, 50)
+        pygame.draw.rect(self.screen, BUTTON_COLOR, button_rect, border_radius=8)
+        btn_text = font.render("Siguiente ronda", True, (255, 255, 255))
+        self.screen.blit(btn_text, (button_rect.centerx - btn_text.get_width() // 2, button_rect.centery - btn_text.get_height() // 2))
+        self.action_buttons = [("next_round", button_rect)]

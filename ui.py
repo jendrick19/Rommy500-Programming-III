@@ -400,13 +400,16 @@ class UI:
                 return
     
     def handle_action(self, action, game):
-        """Maneja las acciones del jugador"""
         if action == "draw_deck":
             game.take_card_from_deck()
+            game.update()  # Force update after action
         elif action == "draw_discard":
             game.take_card_from_discard()
+            game.update()
         elif action == "lay_down":
             game.lay_down_combination()
+            game.update()
         elif action == "discard" and self.selected_card is not None:
             game.discard_card(self.selected_card)
             self.selected_card = None
+            game.update()

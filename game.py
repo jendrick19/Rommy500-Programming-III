@@ -80,8 +80,8 @@ class Game:
         # Recibir actualizaciones de la red
         game_state = self.network.receive_game_state()
         if game_state:
+            self.update_from_dict(game_state)
             try:
-                self.update_from_dict(game_state)
                 # Asegurarse de que el player_id sigue siendo válido
                 if self.player_id >= len(self.players):
                     print(f"Error: player_id {self.player_id} fuera de rango. Ajustando...")
@@ -568,17 +568,22 @@ class Game:
         """Procesa una acción recibida de un cliente (solo el host)"""
         action_type = action.get('type')
         player_id = action.get('player_id')
+        
         if action_type == ACTION_DRAW_DECK:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.take_card_from_deck()
         elif action_type == ACTION_DRAW_DISCARD:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.take_card_from_discard(action.get('is_penalty', False))
         elif action_type == ACTION_PLAY_COMBINATION:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.lay_down_combination()
         elif action_type == ACTION_ADD_TO_COMBINATION:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.add_to_combination(
                     action['card_idx'],
                     action['combination_idx'],
@@ -586,9 +591,11 @@ class Game:
                 )
         elif action_type == ACTION_DISCARD:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.discard_card(action['card_idx'])
         elif action_type == ACTION_REPLACE_JOKER:
             if self.current_player_idx == player_id:
+                self.network.send_game_state(self.to_dict())
                 self.replace_joker(
                     action['card_idx'],
                     action['combination_idx'],

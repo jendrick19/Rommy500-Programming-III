@@ -482,18 +482,27 @@ class Player:
         
         return sequences
     def detect_trios(self):
-        """Detecta tríos en la mano (sin quitarlos)"""
+        """Detecta tríos (3 cartas del mismo valor) incluyendo Jokers"""
         from collections import defaultdict
+
         value_map = defaultdict(list)
+        jokers = [card for card in self.hand if card.is_joker]
+
         for card in self.hand:
             if not card.is_joker:
                 value_map[card.value].append(card)
-    
+
         trios = []
+
         for value, cards in value_map.items():
-            if len(cards) >= 3:
-                trios.append(cards)
+            needed = 3 - len(cards)
+            if needed <= len(jokers):
+                # Crear trío con cartas + jokers necesarios
+                trio = cards + jokers[:needed]
+                trios.append(trio)
+
         return trios
+
 
 
     def detect_seguidillas(self):

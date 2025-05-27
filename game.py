@@ -18,6 +18,7 @@ class Game:
         self.winner = None
         self.deck_checked = False
         self.eliminated_players = []
+        self.deck_exhausted = False  # Nuevo flag para controlar mazo agotado
         self.player_id = network.get_id()  # ID del jugador local
         
         # Inicializar el juego si somos el host
@@ -113,13 +114,28 @@ class Game:
         # Incrementar el número de ronda
         self.round_num = (self.round_num + 1) % len(ROUNDS)
         
-        # Reiniciar el mazo y el descarte
-        self.deck.reset()
-        self.deck_checked = False  # Para volver a permitir validación
+        # Calcular número de mazos necesarios
+        player_count = len([p for p in self.players if p not in self.eliminated_players])
+        num_decks = max(1, (player_count + 2) // 3)
+        
+        # Recrear mazos para la nueva ronda
+        self.decks = []
+        for i in range(num_decks):
+            deck = Deck()
+            self.decks.append(deck)
+        
+        # Combinar todos los mazos
+        self.combined_deck = Deck()
+        self.combined_deck.cards = []
+        for deck in self.decks:
+            self.combined_deck.cards.extend(deck.cards)
+        self.combined_deck.shuffle()
+        
+        # Reiniciar flags
+        self.deck_exhausted = False
+        self.deck_checked = False
         self.check_deck_duplicates(f"Ronda {self.round_num + 1} → ")
         self.discard_pile = DiscardPile()
-        self.sequences_laid_down = 0
-        self.trios_laid_down = 0
         
         # Reiniciar los jugadores
         for player in self.players:
@@ -132,17 +148,18 @@ class Game:
             player.has_laid_down = False
             player.took_discard = False
             player.took_penalty = False
+            player.has_completed_round_requirement = False
         
-        # Designar el nuevo "mano" (el ganador de la ronda anterior)
+        # Designar el nuevo "mano"
         for i, player in enumerate(self.players):
             player.is_mano = (i == self.current_player_idx)
         
         # Repartir cartas
         for player in self.players:
-            player.add_to_hand(self.deck.deal(10))
+            player.add_to_hand(self.combined_deck.deal(10))
         
         # Colocar la primera carta en el descarte
-        self.discard_pile.add(self.deck.deal())
+        self.discard_pile.add(self.combined_deck.deal())
         
         # Establecer el estado del juego
         self.state = GAME_STATE_PLAYING
@@ -155,33 +172,51 @@ class Game:
         if self.state != GAME_STATE_PLAYING:
             return False
         
+        # Verificar si el mazo está agotado
+        if self.deck_exhausted or len(self.combined_deck.cards) == 0:
+            print("No se pueden tomar más cartas: mazo agotado")
+            return False
+        
         player = self.players[self.current_player_idx]
         
         # Verificar si el jugador ya tomó una carta
         if player.took_discard or player.took_penalty:
             return False
         
-        # Tomar una carta del mazo
-        card = self.deck.deal()
-        if not card:
-            # Si el mazo está vacío, mezclar el descarte (excepto la carta superior)
-            if len(self.discard_pile.cards) <= 1:
-                return False
+        # Intentar tomar una carta del mazo
+        if len(self.combined_deck.cards) > 0:
+            card = self.combined_deck.deal()
+            player.add_to_hand(card)
+            player.took_penalty = True
             
-            top_card = self.discard_pile.take()
-            self.deck.cards = self.discard_pile.cards
-            self.discard_pile.cards = []
-            if top_card:
-                self.discard_pile.add(top_card)
-            self.deck.shuffle()
-            
-            # Intentar de nuevo
-            card = self.deck.deal()
-            if not card:
+            # Verificar si el mazo se agotó
+            if len(self.combined_deck.cards) == 0:
+                self.deck_exhausted = True
+                print("¡Mazo agotado! No se pueden tomar más cartas del mazo.")
+        else:
+            # Intentar reciclar el descarte solo si hay más de una carta
+            if len(self.discard_pile.cards) > 1:
+                print("Mazo vacío, reciclando descarte...")
+                top_card = self.discard_pile.take()
+                self.combined_deck.cards = self.discard_pile.cards[:-1]  # Dejar una carta en descarte
+                self.discard_pile.cards = [self.discard_pile.cards[-1]] if self.discard_pile.cards else []
+                if top_card:
+                    self.discard_pile.add(top_card)
+                self.combined_deck.shuffle()
+                
+                # Intentar de nuevo
+                if len(self.combined_deck.cards) > 0:
+                    card = self.combined_deck.deal()
+                    player.add_to_hand(card)
+                    player.took_penalty = True
+                else:
+                    self.deck_exhausted = True
+                    print("No hay suficientes cartas para reciclar. Mazo agotado.")
+                    return False
+            else:
+                self.deck_exhausted = True
+                print("No hay cartas disponibles para tomar.")
                 return False
-        
-        player.add_to_hand(card)
-        player.took_penalty = True  # Marcar que el jugador tomó una carta
         
         # Enviar el estado actualizado
         if self.network.is_host():
@@ -538,13 +573,14 @@ class Game:
         try:
             return {
                 'players': [player.to_dict() for player in self.players],
-                'deck': self.deck.to_dict(),
+                'deck': self.combined_deck.to_dict(),
                 'discard_pile': self.discard_pile.to_dict(),
                 'current_player_idx': self.current_player_idx,
                 'round_num': self.round_num,
                 'state': self.state,
                 'winner': self.winner.id if self.winner else None,
-                'eliminated_players': [player.id for player in self.eliminated_players]
+                'eliminated_players': [player.id for player in self.eliminated_players],
+                'deck_exhausted': self.deck_exhausted  # Añadir flag de mazo agotado
             }
         except Exception as e:
             print(f"Error al convertir el juego a diccionario: {e}")
@@ -558,13 +594,14 @@ class Game:
             self.players = [Player.from_dict(player_data) for player_data in data['players']]
             
             # Actualizar mazo y descarte
-            self.deck = Deck.from_dict(data['deck'])
+            self.combined_deck = Deck.from_dict(data['deck'])
             self.discard_pile = DiscardPile.from_dict(data['discard_pile'])
             
             # Actualizar estado del juego
             self.current_player_idx = data['current_player_idx']
             self.round_num = data['round_num']
             self.state = data['state']
+            self.deck_exhausted = data.get('deck_exhausted', False)
             
             # Actualizar ganador y jugadores eliminados
             if data['winner'] is not None:
@@ -576,6 +613,7 @@ class Game:
         except Exception as e:
             print(f"Error al actualizar el juego desde diccionario: {e}")
             traceback.print_exc()
+            
     def handle_network_action(self, action):
         """Procesa una acción recibida de un cliente (solo el host)"""
         action_type = action.get('type')

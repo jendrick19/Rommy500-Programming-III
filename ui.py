@@ -51,16 +51,34 @@ class UI:
             return
     
     def draw_deck(self, game, x, y):
-        """Dibuja el mazo"""
+        """Dibuja el mazo - MODIFICADO para mostrar estado"""
+        # Determinar el mazo a usar
+        deck = getattr(game, 'combined_deck', game.deck) if hasattr(game, 'combined_deck') else game.deck
+        
+        # Color del mazo según su estado
+        if hasattr(game, 'deck_exhausted') and game.deck_exhausted:
+            deck_color = DISABLED_BUTTON_COLOR
+            border_color = (100, 100, 100)
+        elif len(deck.cards) == 0:
+            deck_color = DISABLED_BUTTON_COLOR
+            border_color = (100, 100, 100)
+        else:
+            deck_color = CARD_BACK_COLOR
+            border_color = TEXT_COLOR
+        
         # Dibujar rectángulo para el mazo
         deck_rect = pygame.Rect(x, y, CARD_WIDTH, CARD_HEIGHT)
-        pygame.draw.rect(self.screen, CARD_BACK_COLOR, deck_rect, border_radius=5)
-        pygame.draw.rect(self.screen, TEXT_COLOR, deck_rect, 2, border_radius=5)
+        pygame.draw.rect(self.screen, deck_color, deck_rect, border_radius=5)
+        pygame.draw.rect(self.screen, border_color, deck_rect, 2, border_radius=5)
         
-        # Dibujar texto
-        deck_text = self.font.render(f"Mazo ({len(game.deck.cards)})", True, TEXT_COLOR)
+        # Texto del estado del mazo
+        if hasattr(game, 'deck_exhausted') and game.deck_exhausted:
+            deck_text = self.font.render("Mazo agotado", True, (255, 0, 0))
+        else:
+            deck_text = self.font.render(f"Mazo ({len(deck.cards)})", True, TEXT_COLOR)
+        
         self.screen.blit(deck_text, (x, y + CARD_HEIGHT + 5))
-    
+
     def draw_discard_pile(self, game, x, y):
         """Dibuja el montón de descarte"""
         # Dibujar rectángulo para el descarte
@@ -345,32 +363,49 @@ class UI:
         start_x = SCREEN_WIDTH - button_width - 20
         start_y = 20
         
-        # Botón para tomar del mazo
+        # Botón para tomar del mazo - MODIFICADO
         if not player.took_discard and not player.took_penalty:
-            draw_deck_rect = pygame.Rect(start_x, start_y, button_width, button_height)
-            pygame.draw.rect(self.screen, BUTTON_COLOR, draw_deck_rect, border_radius=5)
-            draw_deck_text = self.font.render("Tomar del mazo", True, TEXT_COLOR)
-            self.screen.blit(draw_deck_text, (draw_deck_rect.centerx - draw_deck_text.get_width() // 2, 
-                                            draw_deck_rect.centery - draw_deck_text.get_height() // 2))
-            self.action_buttons.append(("draw_deck", draw_deck_rect))
+            # Verificar si el mazo está agotado
+            if hasattr(game, 'deck_exhausted') and game.deck_exhausted:
+                # Botón deshabilitado
+                draw_deck_rect = pygame.Rect(start_x, start_y, button_width, button_height)
+                pygame.draw.rect(self.screen, DISABLED_BUTTON_COLOR, draw_deck_rect, border_radius=5)
+                draw_deck_text = self.font.render("Mazo agotado", True, TEXT_COLOR)
+                self.screen.blit(draw_deck_text, (draw_deck_rect.centerx - draw_deck_text.get_width() // 2, 
+                                                draw_deck_rect.centery - draw_deck_text.get_height() // 2))
+                # No añadir a action_buttons para que no sea clickeable
+            elif hasattr(game, 'combined_deck') and len(game.combined_deck.cards) == 0:
+                # Botón deshabilitado por mazo vacío
+                draw_deck_rect = pygame.Rect(start_x, start_y, button_width, button_height)
+                pygame.draw.rect(self.screen, DISABLED_BUTTON_COLOR, draw_deck_rect, border_radius=5)
+                draw_deck_text = self.font.render("Sin cartas", True, TEXT_COLOR)
+                self.screen.blit(draw_deck_text, (draw_deck_rect.centerx - draw_deck_text.get_width() // 2, 
+                                                draw_deck_rect.centery - draw_deck_text.get_height() // 2))
+            else:
+                # Botón normal habilitado
+                draw_deck_rect = pygame.Rect(start_x, start_y, button_width, button_height)
+                pygame.draw.rect(self.screen, BUTTON_COLOR, draw_deck_rect, border_radius=5)
+                draw_deck_text = self.font.render("Tomar del mazo", True, TEXT_COLOR)
+                self.screen.blit(draw_deck_text, (draw_deck_rect.centerx - draw_deck_text.get_width() // 2, 
+                                                draw_deck_rect.centery - draw_deck_text.get_height() // 2))
+                self.action_buttons.append(("draw_deck", draw_deck_rect))
             
             # Botón para tomar del descarte
-            draw_discard_rect = pygame.Rect(start_x, start_y + button_height + button_spacing, button_width, button_height)
-            pygame.draw.rect(self.screen, BUTTON_COLOR, draw_discard_rect, border_radius=5)
-            draw_discard_text = self.font.render("Tomar del descarte", True, TEXT_COLOR)
-            self.screen.blit(draw_discard_text, (draw_discard_rect.centerx - draw_discard_text.get_width() // 2, 
-                                                draw_discard_rect.centery - draw_discard_text.get_height() // 2))
-            self.action_buttons.append(("draw_discard", draw_discard_rect))
+            if len(game.discard_pile.cards) > 0:
+                draw_discard_rect = pygame.Rect(start_x, start_y + button_height + button_spacing, button_width, button_height)
+                pygame.draw.rect(self.screen, BUTTON_COLOR, draw_discard_rect, border_radius=5)
+                draw_discard_text = self.font.render("Tomar del descarte", True, TEXT_COLOR)
+                self.screen.blit(draw_discard_text, (draw_discard_rect.centerx - draw_discard_text.get_width() // 2, 
+                                                    draw_discard_rect.centery - draw_discard_text.get_height() // 2))
+                self.action_buttons.append(("draw_discard", draw_discard_rect))
         
-        # Botón para bajarse
+        # Resto de botones (bajarse, descartar, etc.) - sin cambios
         show_lay_down = False
         if (player.took_discard or player.took_penalty):
             if game.round_num == 0:
-                # En ronda 1, permitir bajarse si puede (aunque ya haya bajado una vez)
                 if player.can_lay_down(game.round_num):
                     show_lay_down = True
             else:
-                # En otras rondas, solo si no se ha bajado aún
                 if not player.has_laid_down and player.can_lay_down(game.round_num):
                     show_lay_down = True
 
@@ -390,15 +425,9 @@ class UI:
             self.screen.blit(discard_text, (discard_rect.centerx - discard_text.get_width() // 2, 
                                             discard_rect.centery - discard_text.get_height() // 2))
             self.action_buttons.append(("discard", discard_rect))
-        # Botón para añadir a combinación
-        if (player.took_discard or player.took_penalty) and self.selected_card is not None and self.selected_combination is not None:
-            add_to_combination_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 4, button_width, button_height)
-            pygame.draw.rect(self.screen, BUTTON_COLOR, add_to_combination_rect, border_radius=5)
-            add_to_combination_text = self.font.render("Añadir a la combinación", True, TEXT_COLOR)
-            self.screen.blit(add_to_combination_text, (add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
-    
+
     def draw_status_message(self, game):
-        """Dibuja un mensaje de estado"""
+        """Dibuja un mensaje de estado - MODIFICADO"""
         message = ""
         
         if game.state == GAME_STATE_WAITING:
@@ -411,6 +440,12 @@ class UI:
             else:
                 winner_name = f"Jugador {game.winner.id + 1}" if game.winner else "Desconocido"
                 message = f"Fin del juego. Ganador: {winner_name}"
+        elif hasattr(game, 'deck_exhausted') and game.deck_exhausted:
+            if game.current_player_idx == game.player_id:
+                message = "Es tu turno - ¡Mazo agotado! Solo puedes tomar del descarte"
+            else:
+                current_player = game.players[game.current_player_idx]
+                message = f"Turno del Jugador {game.current_player_idx + 1} - Mazo agotado"
         elif game.current_player_idx == game.player_id:
             message = "Es tu turno"
         else:

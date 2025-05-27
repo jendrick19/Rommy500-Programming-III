@@ -306,26 +306,41 @@ def main():
     
     # Bucle principal del juego
     running = True
+    showing_round_scores = False
+
     while running and network.connected:
-        for event in pygame.event.get():
+        # Procesar todos los eventos una sola vez
+        events = pygame.event.get()
+        for event in events:
             if event.type == pygame.QUIT:
                 running = False
-            
-            # Procesar eventos del juego
+
+            # Mostrar pantalla de puntuación si terminó la ronda
+            if showing_round_scores:
+                if event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN:
+                    showing_round_scores = False
+                    if network.is_host():
+                        game.start_new_round()
+                continue  # No procesar más eventos si estamos mostrando puntuación
+
+            # Procesar eventos del juego normalmente
             if event.type == pygame.MOUSEBUTTONDOWN:
                 ui.handle_click(event.pos, game)
-            
             game.handle_event(event)
-        
+
+        # Lógica para mostrar la pantalla de puntuación solo una vez al terminar la ronda
+        if game.state == GAME_STATE_ROUND_END:
+            showing_round_scores = True
+            ui.draw_round_scores(game)
+            pygame.display.flip()
+            continue  # No procesar más eventos hasta que se cierre la pantalla de puntuación
+             
         # Actualizar estado del juego
         game.update()
-        
         # Renderizar
         screen.fill(BG_COLOR)
         ui.draw(game)
         pygame.display.flip()
-        
-        
         clock.tick(FPS)
     
     # Si se desconectó, mostrar mensaje

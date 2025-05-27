@@ -19,6 +19,8 @@ class Game:
         self.deck_checked = False
         self.eliminated_players = []
         self.player_id = network.get_id()  # ID del jugador local
+        self.round_scores = [0 for _ in range(13)]  # Máximo 13 jugadores
+        self.round_winner = None
         
         # Inicializar el juego si somos el host
         if network.is_host():
@@ -105,7 +107,7 @@ class Game:
         if self.state == GAME_STATE_ROUND_END:
             # Iniciar nueva ronda si somos el host
             if self.network.is_host():
-                self.start_new_round()
+                self.end_round()
             return
     
     def start_new_round(self):
@@ -256,15 +258,19 @@ class Game:
         if not player.lay_down(self.round_num):
             return False
 
-        # Enviar el estado actualizado
-        if self.network.is_host():
-            self.network.send_game_state(self.to_dict())
+        # Si el jugador cumple requisitos y se queda sin cartas, termina la ronda
+        if player.has_completed_round_requirement and len(player.hand) == 0:
+            self.end_round(winner_idx=self.current_player_idx)
+            return True
         else:
-            self.network.send_action({
-                'type': ACTION_PLAY_COMBINATION,
-                'player_id': self.player_id
-            })
-
+            # Enviar el estado actualizado
+            if self.network.is_host():
+                self.network.send_game_state(self.to_dict())
+            else:
+                self.network.send_action({
+                    'type': ACTION_PLAY_COMBINATION,
+                    'player_id': self.player_id
+                })
         return True
     
     def add_to_combination(self, card_idx, combination_idx, player_idx=None):
@@ -273,12 +279,15 @@ class Game:
             return False
         
         current_player = self.players[self.current_player_idx]
-        
-        # Verificar si el jugador se ha bajado
-        if not current_player.has_laid_down:
+        # Si no se especifica, agregar a una combinación propia
+        target_player_idx = player_idx if player_idx is not None else self.current_player_idx
+        target_player = self.players[target_player_idx]
+
+        # Solo puedes agregar a combinaciones de otros si ya te bajaste
+        if target_player_idx != self.current_player_idx and not current_player.has_laid_down:
             return False
-        
-        # Verificar si el índice de la carta es válido
+
+        # Validar índice de carta y combinación
         if card_idx < 0 or card_idx >= len(current_player.hand):
             return False
         
@@ -291,12 +300,25 @@ class Game:
         # Verificar si el índice de la combinación es válido
         if combination_idx < 0 or combination_idx >= len(target_player.combinations):
             return False
-        
-        # Verificar si la carta puede ser añadida a la combinación
-        if not self.can_add_to_combination(card, combination_idx, target_player_idx):
+
+        card = current_player.hand[card_idx]
+        combination = target_player.combinations[combination_idx]
+
+        # Validar si la carta puede agregarse a la combinación
+        if combination["type"] == "trio":
+            if not all(card.value == c.value for c in combination["cards"]):
+                return False
+        elif combination["type"] == "sequence":
+            if not all(card.suit == c.suit for c in combination["cards"]):
+                return False
+            values = [VALUES.index(c.value) for c in combination["cards"]]
+            card_val = VALUES.index(card.value)
+            if not (card_val == min(values) - 1 or card_val == max(values) + 1):
+                return False
+        else:
             return False
-        
-        # Añadir la carta a la combinación
+
+        # Agregar la carta
         target_player.combinations[combination_idx]["cards"].append(card)
         current_player.remove_from_hand(card)
         
@@ -323,18 +345,13 @@ class Game:
         return True
     
     def can_add_to_combination(self, card, combination_idx, player_idx):
-        """Verifica si una carta puede ser añadida a una combinación"""
         target_player = self.players[player_idx]
-        
         if combination_idx >= len(target_player.combinations):
             return False
-        
         combination = target_player.combinations[combination_idx]
-        
         if combination["type"] == "trio":
             # Para un trío, la carta debe tener el mismo valor
             return any(card.value == c.value for c in combination["cards"])
-        
         elif combination["type"] == "sequence":
             # Para una seguidilla, la carta debe ser del mismo palo y continuar la secuencia
             if not all(card.suit == c.suit for c in combination["cards"]):
@@ -469,17 +486,17 @@ class Game:
         """El jugador actual descarta una carta"""
         if self.state != GAME_STATE_PLAYING:
             return False
-        
+
         player = self.players[self.current_player_idx]
-        
+
         # Verificar si el jugador ha tomado una carta
         if not player.took_discard and not player.took_penalty:
             return False
-        
+
         # Verificar si el índice de la carta es válido
         if card_idx < 0 or card_idx >= len(player.hand):
             return False
-        
+
         # Descartar la carta
         card = player.hand[card_idx]
         player.remove_from_hand(card)
@@ -512,26 +529,12 @@ class Game:
         player.took_discard = False
         player.took_penalty = False
     
-    def end_round(self):
-        """Finaliza la ronda actual"""
-        # Calcular puntos para los jugadores que no se bajaron
-        for player in self.players:
-            if not player.has_laid_down:
-                points = player.calculate_hand_points()
-                player.score += points
-        
-        # Verificar si algún jugador ha sido eliminado
-        for i, player in enumerate(self.players):
-            if player.score >= 500 and player not in self.eliminated_players:
-                self.eliminated_players.append(player)
-        
-        # Verificar si solo queda un jugador
-        active_players = [p for p in self.players if p not in self.eliminated_players]
-        if len(active_players) == 1:
-            self.winner = active_players[0]
-            self.state = GAME_STATE_GAME_END
-        else:
-            self.state = GAME_STATE_ROUND_END
+    def end_round(self, winner_idx=None):
+        self.state = GAME_STATE_ROUND_END
+        self.round_scores = [p.calculate_hand_points() for p in self.players]
+        self.round_winner = winner_idx
+        if self.network.is_host():
+            self.network.send_game_state(self.to_dict())
     
     def to_dict(self):
         """Convierte el estado del juego a un diccionario para enviar por la red"""
@@ -542,6 +545,8 @@ class Game:
                 'discard_pile': self.discard_pile.to_dict(),
                 'current_player_idx': self.current_player_idx,
                 'round_num': self.round_num,
+                'round_scores': getattr(self, 'round_scores', [0 for _ in self.players]),
+                'round_winner': getattr(self, 'round_winner', None),
                 'state': self.state,
                 'winner': self.winner.id if self.winner else None,
                 'eliminated_players': [player.id for player in self.eliminated_players]
@@ -565,6 +570,9 @@ class Game:
             self.current_player_idx = data['current_player_idx']
             self.round_num = data['round_num']
             self.state = data['state']
+            self.round_scores = data.get('round_scores', [0 for _ in self.players])
+            self.round_winner = data.get('round_winner', None)
+    
             
             # Actualizar ganador y jugadores eliminados
             if data['winner'] is not None:
@@ -577,46 +585,62 @@ class Game:
             print(f"Error al actualizar el juego desde diccionario: {e}")
             traceback.print_exc()
     def handle_network_action(self, action):
-        """Procesa una acción recibida de un cliente (solo el host)"""
         action_type = action.get('type')
         player_id = action.get('player_id')
-        
+
         if action_type == ACTION_DRAW_DECK:
             if self.current_player_idx == player_id:
-                self.network.send_game_state(self.to_dict())
                 self.take_card_from_deck()
+                if not self.check_and_end_round():
+                    self.network.send_game_state(self.to_dict())
+
         elif action_type == ACTION_DRAW_DISCARD:
             if self.current_player_idx == player_id:
-                self.network.send_game_state(self.to_dict())
                 self.take_card_from_discard(action.get('is_penalty', False))
+                if not self.check_and_end_round():
+                    self.network.send_game_state(self.to_dict())
+
         elif action_type == ACTION_PLAY_COMBINATION:
             if self.current_player_idx == player_id:
-                self.network.send_game_state(self.to_dict())
                 self.lay_down_combination()
+                if not self.check_and_end_round():
+                    self.network.send_game_state(self.to_dict())
+
         elif action_type == ACTION_ADD_TO_COMBINATION:
             if self.current_player_idx == player_id:
-                self.network.send_game_state(self.to_dict())
                 self.add_to_combination(
                     action['card_idx'],
                     action['combination_idx'],
                     action.get('target_player_idx')
                 )
+                if not self.check_and_end_round():
+                    self.network.send_game_state(self.to_dict())
         elif action_type == ACTION_DISCARD:
             if self.current_player_idx == player_id:
-                self.network.send_game_state(self.to_dict())
                 self.discard_card(action['card_idx'])
+                if not self.check_and_end_round():
+                    self.network.send_game_state(self.to_dict())
+
         elif action_type == ACTION_REPLACE_JOKER:
             if self.current_player_idx == player_id:
-                self.network.send_game_state(self.to_dict())
                 self.replace_joker(
                     action['card_idx'],
                     action['combination_idx'],
                     action['joker_idx'],
                     action.get('target_player_idx')
                 )
-    
+                if not self.check_and_end_round():
+                    self.network.send_game_state(self.to_dict())
+
     def check_deck_duplicates(self, mensaje=""):
         seen = set()
         for card in self.deck.cards:
             seen.add((card.value, card.suit, id(card)))
             print(f"{mensaje}Total cartas únicas: {len(seen)} / Total en mazo: {len(self.deck.cards)}")
+    def check_and_end_round(self):
+        """Verifica si algún jugador cumplió requisitos y se quedó sin cartas, y termina la ronda si es así."""
+        for idx, player in enumerate(self.players):
+            if player.has_completed_round_requirement and len(player.hand) == 0:
+                self.end_round(winner_idx=idx)
+                return True
+        return False

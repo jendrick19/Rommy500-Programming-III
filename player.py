@@ -277,38 +277,30 @@ class Player:
     
     def _get_trio(self):
         """Obtiene un trío de la mano del jugador"""
-        value_counts = {}
-        for card in self.hand:
-            if not card.is_joker:
-                value_counts[card.value] = value_counts.get(card.value, 0) + 1
+        jokers = [card for card in self.hand if card.is_joker]
+        non_jokers = [card for card in self.hand if not card.is_joker]
         
-        # Buscar un valor con al menos 3 cartas
+        # Caso especial: solo jokers
+        if len(jokers) >= 3:
+            return jokers[:3]
+        
+        # Agrupar cartas por valor
+        value_counts = {}
+        for card in non_jokers:
+            value_counts[card.value] = value_counts.get(card.value, 0) + 1
+        
+        # Buscar un valor con al menos 2 cartas (para completar con 1 joker)
         for value, count in value_counts.items():
-            if count >= 3:
-                # Encontrar las 3 primeras cartas con este valor
-                trio = []
-                for card in self.hand:
-                    if not card.is_joker and card.value == value:
-                        trio.append(card)
-                        if len(trio) == 3:
-                            return trio
-                
-                # Si no hay suficientes cartas, usar Jokers
-                jokers = [card for card in self.hand if card.is_joker]
-                if count + len(jokers) >= 3:
-                    trio = []
-                    # Añadir las cartas con el valor
-                    for card in self.hand:
-                        if not card.is_joker and card.value == value:
-                            trio.append(card)
-                    
-                    # Añadir los Jokers necesarios
-                    jokers_needed = 3 - len(trio)
-                    for i in range(jokers_needed):
-                        if i < len(jokers):
-                            trio.append(jokers[i])
-                    
-                    return trio
+            if count >= 2 and jokers:
+                trio = [card for card in non_jokers if card.value == value][:2]
+                trio.append(jokers[0])
+                return trio
+            elif count >= 3:
+                return [card for card in non_jokers if card.value == value][:3]
+        
+        # Si hay suficientes jokers para un trío
+        if len(jokers) >= 3:
+            return jokers[:3]
         
         return None
     
@@ -364,79 +356,67 @@ class Player:
     
     def _get_sequence(self):
         """Obtiene una seguidilla de la mano del jugador, usando Jokers como comodines."""
+        jokers = [card for card in self.hand if card.is_joker]
+        non_jokers = [card for card in self.hand if not card.is_joker]
+        
+        # Caso especial: solo jokers
+        if len(jokers) >= 4:
+            return jokers[:4]
+        
         # Agrupar cartas por palo
         suits = {}
-        for card in self.hand:
-            if card.is_joker:
-                continue
+        for card in non_jokers:
             if card.suit not in suits:
                 suits[card.suit] = []
             suits[card.suit].append(card)
-
-        # Contar Jokers disponibles
-        jokers = [card for card in self.hand if card.is_joker]
-
-        # Verificar cada palo
+        
         for suit, cards in suits.items():
+            if not cards:
+                continue
+            
             # Ordenar cartas por valor
             cards.sort(key=lambda c: VALUES.index(c.value))
-
-            # Probar todas las posibles secuencias de inicio
+            
+            # Intentar construir secuencias
             for i in range(len(cards)):
                 sequence = [cards[i]]
                 available_jokers = jokers.copy()
-                last_val_idx = VALUES.index(cards[i].value)
-
-                for next_val_idx in range(last_val_idx + 1, len(VALUES)):
-                    # ¿Ya tenemos la carta siguiente?
+                
+                current_val = VALUES.index(cards[i].value)
+                
+                # Intentar extender la secuencia hacia adelante
+                for next_val in range(current_val + 1, len(VALUES)):
+                    # Buscar carta con el siguiente valor
                     found = False
-                    for c in cards:
-                        if VALUES.index(c.value) == next_val_idx and c not in sequence:
-                            sequence.append(c)
+                    for card in cards:
+                        if VALUES.index(card.value) == next_val and card not in sequence:
+                            sequence.append(card)
                             found = True
                             break
+                    
                     if not found:
-                        # Si no está, ¿tenemos un Joker para rellenar?
                         if available_jokers:
                             sequence.append(available_jokers.pop(0))
                         else:
-                            break  # No podemos continuar la secuencia
-
-                # Si la secuencia es suficientemente larga, la devolvemos
+                            break
+                
                 if len(sequence) >= 4:
                     return sequence
-
-                # También probar secuencias más cortas usando Jokers al principio
-                # (Por ejemplo, si tenemos 7-8-9 y dos Jokers, podríamos hacer 5-6-7-8-9)
-                for offset in range(1, min(len(VALUES), len(jokers) + 1)):
-                    sequence = []
-                    available_jokers = jokers.copy()
-                    start_val_idx = VALUES.index(cards[i].value) - offset
-                    if start_val_idx < 0:
-                        continue
-                    # Añadir Jokers al principio
-                    for _ in range(offset):
-                        sequence.append(available_jokers.pop(0))
-                    # Añadir cartas reales
-                    for idx in range(start_val_idx, VALUES.index(cards[i].value) + 1):
-                        found = False
-                        for c in cards:
-                            if VALUES.index(c.value) == idx and c not in sequence:
-                                sequence.append(c)
-                                found = True
-                                break
-                        if not found:
-                            if available_jokers:
-                                sequence.append(available_jokers.pop(0))
-                            else:
-                                break
-                    if len(sequence) >= 4:
-                        return sequence
-
-        # Si hay suficientes Jokers, pueden formar una secuencia solos
+                
+                # Intentar extender hacia atrás con jokers
+                if available_jokers:
+                    first_val = VALUES.index(sequence[0].value)
+                    needed = first_val - 0  # Cuántos necesitamos para llegar al inicio
+                    if len(available_jokers) >= needed:
+                        for _ in range(needed):
+                            sequence.insert(0, available_jokers.pop(0))
+                        if len(sequence) >= 4:
+                            return sequence
+        
+        # Si no se encontró ninguna secuencia, verificar si hay suficientes jokers
         if len(jokers) >= 4:
             return jokers[:4]
-
+        
         return None
     
     def _get_sequences(self, count):

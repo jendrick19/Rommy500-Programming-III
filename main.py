@@ -11,6 +11,8 @@ def main():
     pygame.init()
     pygame.display.set_caption("Rummy 500")
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    icon = pygame.image.load("balatro.jpg")
+    icon = pygame.transform.smoothscale(icon, (130, 165))
     clock = pygame.time.Clock()
     
     # Pantalla inicial para elegir entre host o unirse
@@ -81,17 +83,19 @@ def main():
             # Dibujar título
             title_font = pygame.font.SysFont(None, 48)
             title_text = title_font.render("Rummy 500", True, TEXT_COLOR)
-            screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 100))
+            screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 50))
             
+            icon_rect = icon.get_rect(center=(SCREEN_WIDTH // 2, 170))
+            screen.blit(icon, icon_rect)
             # Dibujar botones
             font = pygame.font.SysFont(None, 32)
             host_text = font.render("Crear partida", True, TEXT_COLOR)
             join_text = font.render("Unirse a partida", True, TEXT_COLOR)
             rules_text = font.render("Reglas", True, TEXT_COLOR)
             
-            host_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 100, 200, 50)
-            join_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 30, 200, 50)
-            rules_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 60, 200, 50)
+            host_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 90, 200, 50)
+            join_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 20, 200, 50)
+            rules_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 70, 200, 50)
             
             pygame.draw.rect(screen, BUTTON_COLOR, host_rect, border_radius=5)
             pygame.draw.rect(screen, BUTTON_COLOR, join_rect, border_radius=5)

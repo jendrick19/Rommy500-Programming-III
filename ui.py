@@ -266,20 +266,31 @@ class UI:
     
     def draw_card(self, card, x, y):
         """Dibuja una carta"""
-        # Colores base
-        card_color = (255, 255, 255)  # Blanco para cartas normales
-        text_color = (0, 0, 0)
+        # Colores base según el palo
         if card.is_joker:
             card_color = (200, 200, 0)  # Amarillo para Jokers
-        elif card.suit in ['♥', '♦']:
-            card_color = (255, 200, 200)  # Rojo claro
-            text_color = (150, 0, 0)      # Rojo oscuro para texto
-    
-        # Rectángulo principal
+            text_color = (0, 0, 0)
+        elif card.suit == '♦':
+            card_color = (255, 255, 100)  # Amarillo para diamantes
+            text_color = (180, 140, 0)
+        elif card.suit == '♣':
+            card_color = (180, 220, 255)  # Azul claro para tréboles
+            text_color = (0, 60, 180)
+        elif card.suit == '♠':
+            card_color = (220, 220, 220)  # Gris claro para picas (fondo)
+            text_color = (0, 0, 0)        # Negro para texto
+        elif card.suit == '♥':
+            card_color = (255, 200, 200)  # Rojo claro para corazones
+            text_color = (150, 0, 0)
+        else:
+            card_color = (255, 255, 255)
+            text_color = (0, 0, 0)
+
+    # Rectángulo principal
         card_rect = pygame.Rect(x, y, CARD_WIDTH, CARD_HEIGHT)
         pygame.draw.rect(self.screen, card_color, card_rect, border_radius=5)
         pygame.draw.rect(self.screen, (0, 0, 0), card_rect, 2, border_radius=5)
-    
+
         if card.is_joker:
             # 🃏 centrado
             joker_text = self.card_font.render("🃏", True, text_color)
@@ -304,13 +315,26 @@ class UI:
     
     def draw_mini_card(self, card, x, y):
         """Dibuja una versión miniatura de una carta"""
-        # Dibujar rectángulo de la carta
-        card_color = (255, 255, 255)  # Blanco para cartas normales
+        # Colores base según el palo
         if card.is_joker:
             card_color = (200, 200, 0)  # Amarillo para Jokers
-        elif card.suit in ['♥', '♦']:
-            card_color = (255, 200, 200)  # Rojo claro para corazones y diamantes
-        
+            text_color = (0, 0, 0)
+        elif card.suit == '♦':
+            card_color = (255, 255, 100)  # Amarillo para diamantes
+            text_color = (180, 140, 0)
+        elif card.suit == '♣':
+            card_color = (180, 220, 255)  # Azul claro para tréboles
+            text_color = (0, 60, 180)
+        elif card.suit == '♠':
+            card_color = (220, 220, 220)  # Gris claro para picas (fondo)
+            text_color = (0, 0, 0)
+        elif card.suit == '♥':
+            card_color = (255, 200, 200)  # Rojo claro para corazones
+            text_color = (150, 0, 0)
+        else:
+            card_color = (255, 255, 255)
+            text_color = (0, 0, 0)
+
         mini_width = 20 if len(card.value) > 1 else 15
         mini_height = 20
         card_rect = pygame.Rect(x, y, mini_width, mini_height)
@@ -320,9 +344,9 @@ class UI:
         # Dibujar texto miniatura
         mini_font = pygame.font.SysFont(None, 12)
         if card.is_joker:
-            mini_text = mini_font.render("J", True, (0, 0, 0))
+            mini_text = mini_font.render("J", True, text_color)
         else:
-            mini_text = mini_font.render(card.value, True, (0, 0, 0))
+            mini_text = mini_font.render(card.value, True, text_color)
         self.screen.blit(mini_text, (x + mini_width // 2 - mini_text.get_width() // 2, 
                                     y + mini_height // 2 - mini_text.get_height() // 2))
     
@@ -433,44 +457,44 @@ class UI:
         if game.player_id < 0 or game.player_id >= len(game.players):
             return
 
-        # Verificar si se hizo clic en una carta de la mano
+        # Selección de carta de la mano del jugador local
         player = game.players[game.player_id]
         hand_x = 20
         base_y = SCREEN_HEIGHT - 280
-        hand_y = base_y + 60 
+        hand_y = base_y + 60
         card_spacing = min(CARD_SPACING, (SCREEN_WIDTH - 40) / max(1, len(player.hand)) - CARD_WIDTH)
 
-        for i, card in enumerate(player.hand):
+        for i in range(len(player.hand)):
             card_x = hand_x + i * (CARD_WIDTH + card_spacing)
             card_y = hand_y
             card_rect = pygame.Rect(card_x, card_y, CARD_WIDTH, CARD_HEIGHT)
             if card_rect.collidepoint(pos):
                 self.selected_card = i
+                # Si ya hay una combinación seleccionada, intentar añadir la carta
+                if self.selected_combination is not None and self.selected_player is not None:
+                    self.handle_action("add_to_combo", game)
                 return
 
-        # Verificar si se hizo clic en una combinación de cualquier jugador
-        found_combo = False
-        for pid, player in enumerate(game.players):
-            for cidx, combo in enumerate(player.combinations):
-                # Aquí debes calcular la posición real de cada combinación según tu lógica de draw_player_combinations
-                # Ejemplo básico (ajusta según tu UI real):
-                combo_x = 100 + pid * 200  # Ejemplo: separa por jugador
-                combo_y = 150 + cidx * 30  # Ejemplo: separa por combinación
-                combo_rect = pygame.Rect(combo_x, combo_y, 100, 25)
+        # Selección de combinaciones de cualquier jugador
+        for pid, p in enumerate(game.players):
+            for cidx in range(len(p.combinations)):
+                combo_rect = self.get_combination_rect(pid, cidx, game)
                 if combo_rect.collidepoint(pos):
                     self.selected_combination = cidx
                     self.selected_player = pid
-                    found_combo = True
+                    if self.selected_card is not None:
+                        self.handle_action("add_to_combo", game)
                     return
+
+        # Si no se hizo clic en nada relevante, limpiar selección
         self.selected_card = None
         self.selected_combination = None
         self.selected_player = None
-        # Si no se hizo clic en nada relevante, simplemente no hacer nada (no romper)
-        return
+
     def handle_action(self, action, game):
         if action == "draw_deck":
             game.take_card_from_deck()
-            game.update()  # Force update after action
+            game.update()
         elif action == "draw_discard":
             game.take_card_from_discard()
             game.update()
@@ -485,16 +509,17 @@ class UI:
             if game.network.is_host():
                 game.start_new_round()
                 game.update()
-        elif action == "add_to_combo" and self.selected_card is not None and self.selected_combination is not None:
+        elif action == "add_to_combo" and self.selected_card is not None and self.selected_combination is not None and self.selected_player is not None:
+            # Permitir añadir a cualquier combinación bajada (propia o de otro jugador)
             game.add_to_combination(
                 self.selected_card,
                 self.selected_combination,
                 self.selected_player
             )
+            # No limpiar self.selected_combination ni self.selected_player,
+            # solo limpiar la carta seleccionada para permitir añadir varias seguidas
             self.selected_card = None
-            self.selected_combination = None
-            self.selected_player = None
-            game.update()
+        game.update()
 
     def draw_score_table(self, game):
         # Fondo semitransparente
@@ -608,3 +633,54 @@ class UI:
             self.draw_card(card, x, y)
             pygame.display.flip()
             pygame.time.delay(10)
+
+    def get_combination_rect(self, pid, cidx, game):
+        """Devuelve el rectángulo de la combinación cidx del jugador pid"""
+        player_count = len(game.players)
+        if player_count <= 4:
+            # Usa las posiciones del arreglo positions en draw_players
+            positions = [
+                (SCREEN_WIDTH // 2 - 150, 50),  # Arriba
+                (SCREEN_WIDTH - 250, SCREEN_HEIGHT // 2 - 100),  # Derecha
+                (SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT - 200),  # Abajo (jugador local)
+                (50, SCREEN_HEIGHT // 2 - 100)  # Izquierda
+            ]
+            local_player_idx = game.player_id
+            pos_idx = pid if pid < local_player_idx else pid - 1 if pid > local_player_idx else None
+            if pos_idx is not None and pos_idx < len(positions):
+                x, y = positions[pos_idx]
+                return pygame.Rect(x + 80, y + 100 + cidx * 25, 120, 25)
+        else:
+            # Para más de 4 jugadores, distribuye en círculo alrededor del centro
+            center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+            radius = min(center_x, center_y) - 180
+            angle_step = 2 * math.pi / player_count
+            angle = pid * angle_step
+            # Calcula la posición base del jugador
+            base_x = center_x + radius * math.cos(angle)
+            base_y = center_y + radius * math.sin(angle)
+            # Ajusta para dejar espacio para combinaciones
+            combo_x = int(base_x) + 80
+            combo_y = int(base_y) + 40 + cidx * 28
+            return pygame.Rect(combo_x, combo_y, 120, 25)
+        # Fallback
+        return pygame.Rect(100 + pid * 200, 150 + cidx * 30, 120, 25)
+
+    def draw_round_scores(self, game):
+        self.screen.fill(BG_COLOR)
+        title = self.font.render("Fin de la ronda", True, (255, 255, 0))
+        self.screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 80))
+        y = 160
+        for idx, player in enumerate(game.players):
+            name = getattr(player, "name", f"Jugador {idx+1}")
+            score = game.round_scores[idx] if hasattr(game, "round_scores") and idx < len(game.round_scores) else 0
+            text = self.font.render(f"{name}: {score} puntos", True, TEXT_COLOR)
+            self.screen.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, y))
+            y += 40
+        # Mostrar ganador solo si existe
+        if hasattr(game, "round_winner") and game.round_winner is not None and 0 <= game.round_winner < len(game.players):
+            winner_name = getattr(game.players[game.round_winner], "name", f"Jugador {game.round_winner+1}")
+            winner_text = self.font.render(f"Ganador de la ronda: {winner_name}", True, (0, 255, 0))
+            self.screen.blit(winner_text, (SCREEN_WIDTH // 2 - winner_text.get_width() // 2, y + 20))
+        continue_text = self.font.render("Haz clic para continuar...", True, (200, 200, 200))
+        self.screen.blit(continue_text, (SCREEN_WIDTH // 2 - continue_text.get_width() // 2, y + 70))

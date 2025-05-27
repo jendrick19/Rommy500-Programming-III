@@ -11,6 +11,8 @@ def main():
     pygame.init()
     pygame.display.set_caption("Rummy 500")
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    icon = pygame.image.load("balatro.jpg")
+    icon = pygame.transform.smoothscale(icon, (130, 165))
     clock = pygame.time.Clock()
     
     # Pantalla inicial para elegir entre host o unirse
@@ -81,17 +83,19 @@ def main():
             # Dibujar título
             title_font = pygame.font.SysFont(None, 48)
             title_text = title_font.render("Rummy 500", True, TEXT_COLOR)
-            screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 100))
+            screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 50))
             
+            icon_rect = icon.get_rect(center=(SCREEN_WIDTH // 2, 170))
+            screen.blit(icon, icon_rect)
             # Dibujar botones
             font = pygame.font.SysFont(None, 32)
             host_text = font.render("Crear partida", True, TEXT_COLOR)
             join_text = font.render("Unirse a partida", True, TEXT_COLOR)
             rules_text = font.render("Reglas", True, TEXT_COLOR)
             
-            host_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 100, 200, 50)
-            join_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 30, 200, 50)
-            rules_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 60, 200, 50)
+            host_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 90, 200, 50)
+            join_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 20, 200, 50)
+            rules_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 70, 200, 50)
             
             pygame.draw.rect(screen, BUTTON_COLOR, host_rect, border_radius=5)
             pygame.draw.rect(screen, BUTTON_COLOR, join_rect, border_radius=5)
@@ -302,26 +306,41 @@ def main():
     
     # Bucle principal del juego
     running = True
+    showing_round_scores = False
+
     while running and network.connected:
-        for event in pygame.event.get():
+        # Procesar todos los eventos una sola vez
+        events = pygame.event.get()
+        for event in events:
             if event.type == pygame.QUIT:
                 running = False
-            
-            # Procesar eventos del juego
+
+            # Mostrar pantalla de puntuación si terminó la ronda
+            if showing_round_scores:
+                if event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN:
+                    showing_round_scores = False
+                    if network.is_host():
+                        game.start_new_round()
+                continue  # No procesar más eventos si estamos mostrando puntuación
+
+            # Procesar eventos del juego normalmente
             if event.type == pygame.MOUSEBUTTONDOWN:
                 ui.handle_click(event.pos, game)
-            
             game.handle_event(event)
-        
+
+        # Lógica para mostrar la pantalla de puntuación solo una vez al terminar la ronda
+        if game.state == GAME_STATE_ROUND_END:
+            showing_round_scores = True
+            ui.draw_round_scores(game)
+            pygame.display.flip()
+            continue  # No procesar más eventos hasta que se cierre la pantalla de puntuación
+             
         # Actualizar estado del juego
         game.update()
-        
         # Renderizar
         screen.fill(BG_COLOR)
         ui.draw(game)
         pygame.display.flip()
-        
-        
         clock.tick(FPS)
     
     # Si se desconectó, mostrar mensaje

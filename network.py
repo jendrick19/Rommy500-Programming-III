@@ -224,6 +224,11 @@ class Network:
                                 with self.lock:
                                     self.game_state = message['game_state']
                                     print("Estado del juego actualizado correctamente")
+
+                             # ✅ Asegúrate de aplicar el estado recibido al objeto game activo
+                                    if hasattr(self, 'game') and self.game is not None:
+                                        self.game.load_from_dict(self.game_state)
+                                        self.game.update()
                             elif 'start_game' in message:
                                 print("Recibido mensaje de inicio de juego")
                         except json.JSONDecodeError as e:

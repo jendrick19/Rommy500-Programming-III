@@ -344,7 +344,7 @@ def main():
 
         # Mostrar pantalla de puntuación si terminó la ronda
         if showing_round_scores:
-            ui.draw_round_scores(game, network.is_host())
+            ui.draw_round_scores(game)
             pygame.display.flip()
             continue  # No procesar más lógica hasta que se cierre la pantalla de puntuación
              

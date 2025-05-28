@@ -1,5 +1,6 @@
 from constants import CARD_VALUES, VALUES, SUITS
 from card import Card
+ALT_VALUES = VALUES[1:] + ['A']
 
 class Player:
     def __init__(self, id, name):
@@ -217,7 +218,14 @@ class Player:
         return False
     
     def _has_sequence(self):
-        # Agrupar cartas por palo
+        """Verifica si el jugador tiene una seguidilla en su mano"""
+        for use_alt_values in [False, True]:
+            value_list = ALT_VALUES if use_alt_values else VALUES
+            if self._has_sequence_with_values(value_list):
+                return True
+        return False
+
+    def _has_sequence_with_values(self, value_list):
         suits = {}
         for card in self.hand:
             if card.is_joker:
@@ -225,34 +233,37 @@ class Player:
             if card.suit not in suits:
                 suits[card.suit] = []
             suits[card.suit].append(card)
-        
+
         joker_count = sum(1 for card in self.hand if card.is_joker)
-        
+
         for suit, cards in suits.items():
-            cards.sort(key=lambda c: VALUES.index(c.value))
-            for i in range(len(cards)):
-                sequence = [cards[i]]
+            sorted_cards = sorted(cards, key=lambda c: value_list.index(c.value))
+            for i in range(len(sorted_cards)):
+                sequence = [sorted_cards[i]]
                 available_jokers = joker_count
-                last_val = VALUES.index(cards[i].value)
-                for j in range(i + 1, len(cards)):
-                    next_val = VALUES.index(cards[j].value)
-                    gap = next_val - last_val - 1
-                    if gap == 0:
-                        sequence.append(cards[j])
-                        last_val = next_val
-                    elif gap > 0 and available_jokers >= gap:
-                        sequence.extend([None]*gap)  # Jokers como comodines
-                        sequence.append(cards[j])
-                        available_jokers -= gap
-                        last_val = next_val
+                for j in range(i + 1, len(sorted_cards)):
+                    prev_idx = value_list.index(sequence[-1].value)
+                    curr_idx = value_list.index(sorted_cards[j].value)
+
+                    gap = curr_idx - prev_idx
+                    if gap == 1:
+                        sequence.append(sorted_cards[j])
+                    elif gap > 1 and available_jokers >= (gap - 1):
+                        for _ in range(gap - 1):
+                            sequence.append(None)  # Joker placeholder
+                            available_jokers -= 1
+                        sequence.append(sorted_cards[j])
                     else:
                         break
+
+                    if len(sequence) >= 4:
+                        return True
+
                 if len(sequence) + available_jokers >= 4:
                     return True
-        # Si hay suficientes Jokers, pueden formar una secuencia solos
-        if joker_count >= 4:
-            return True
+
         return False
+
     
     def _count_sequences(self):
         """Cuenta cuántas seguidillas puede formar el jugador"""
@@ -372,68 +383,56 @@ class Player:
         return trios
     
     def _get_sequence(self):
-        """Obtiene una seguidilla de la mano del jugador, usando Jokers como comodines."""
-        jokers = [card for card in self.hand if card.is_joker]
-        non_jokers = [card for card in self.hand if not card.is_joker]
-        
-        # Caso especial: solo jokers
-        if len(jokers) >= 4:
-            return jokers[:4]
-        
-        # Agrupar cartas por palo
+        """Obtiene una seguidilla válida"""
+        for use_alt_values in [False, True]:
+            value_list = ALT_VALUES if use_alt_values else VALUES
+            sequence = self._get_sequence_with_values(value_list)
+            if sequence:
+                return sequence
+        return None
+
+    def _get_sequence_with_values(self, value_list):
         suits = {}
-        for card in non_jokers:
+        for card in self.hand:
+            if card.is_joker:
+                continue
             if card.suit not in suits:
                 suits[card.suit] = []
             suits[card.suit].append(card)
-        
+
+        jokers = [card for card in self.hand if card.is_joker]
+
         for suit, cards in suits.items():
-            if not cards:
-                continue
-            
-            # Ordenar cartas por valor
-            cards.sort(key=lambda c: VALUES.index(c.value))
-            
-            # Intentar construir secuencias
-            for i in range(len(cards)):
-                sequence = [cards[i]]
+            sorted_cards = sorted(cards, key=lambda c: value_list.index(c.value))
+            best_sequence = []
+            for i in range(len(sorted_cards)):
+                sequence = [sorted_cards[i]]
                 available_jokers = jokers.copy()
-                
-                current_val = VALUES.index(cards[i].value)
-                
-                # Intentar extender la secuencia hacia adelante
-                for next_val in range(current_val + 1, len(VALUES)):
-                    # Buscar carta con el siguiente valor
-                    found = False
-                    for card in cards:
-                        if VALUES.index(card.value) == next_val and card not in sequence:
-                            sequence.append(card)
-                            found = True
-                            break
-                    
-                    if not found:
-                        if available_jokers:
+                for j in range(i + 1, len(sorted_cards)):
+                    prev_idx = value_list.index(sequence[-1].value)
+                    curr_idx = value_list.index(sorted_cards[j].value)
+
+                    gap = curr_idx - prev_idx
+                    if gap == 1:
+                        sequence.append(sorted_cards[j])
+                    elif gap > 1 and len(available_jokers) >= (gap - 1):
+                        for _ in range(gap - 1):
                             sequence.append(available_jokers.pop(0))
-                        else:
-                            break
-                
-                if len(sequence) >= 4:
-                    return sequence
-                
-                # Intentar extender hacia atrás con jokers
-                if available_jokers:
-                    first_val = VALUES.index(sequence[0].value)
-                    needed = first_val - 0  # Cuántos necesitamos para llegar al inicio
-                    if len(available_jokers) >= needed:
-                        for _ in range(needed):
-                            sequence.insert(0, available_jokers.pop(0))
-                        if len(sequence) >= 4:
-                            return sequence
-        
-        # Si no se encontró ninguna secuencia, verificar si hay suficientes jokers
-        if len(jokers) >= 4:
-            return jokers[:4]
-        
+                        sequence.append(sorted_cards[j])
+                    else:
+                        break
+
+                    if len(sequence) >= 4 and len(sequence) > len(best_sequence):
+                        best_sequence = sequence.copy()
+
+                if len(sequence) + len(available_jokers) >= 4 and len(sequence) + len(available_jokers) > len(best_sequence):
+                    while len(sequence) < 4 and available_jokers:
+                        sequence.append(available_jokers.pop(0))
+                    best_sequence = sequence
+
+            if best_sequence and len(best_sequence) >= 4:
+                return best_sequence
+
         return None
     
     def _get_sequences(self, count):

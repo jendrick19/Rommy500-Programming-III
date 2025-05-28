@@ -200,39 +200,38 @@ class Network:
                 # Acumular datos en el buffer
                 buffer += data
                 
-                # Verificar si tenemos un mensaje completo
-                if b'<END>' in buffer:
-                    # Extraer el mensaje completo
+                # Procesar todos los mensajes completos en el buffer
+                while b'<END>' in buffer:
+    # Extraer el mensaje completo
                     message_data, buffer = buffer.split(b'<END>', 1)
                     
-                    try:
-                        # Para depuración
-                        print(f"Mensaje completo recibido: {len(message_data)} bytes")
-                        
-                        # Intentar decodificar y cargar el JSON
-                        message = json.loads(message_data.decode('utf-8'))
-                        
-                        # Actualizar el estado del juego
-                        if 'game_state' in message:
-                            with self.lock:
-                                self.game_state = message['game_state']
-                                print("Estado del juego actualizado correctamente")
-                        elif 'start_game' in message:
-                            print("Recibido mensaje de inicio de juego")
-                    
-                    except json.JSONDecodeError as e:
-                        print(f"Error al decodificar JSON: {e}")
-                        print(f"Datos recibidos (primeros 100 bytes): {message_data[:100]}...")
-                        traceback.print_exc()
-                else:
-                    # Si no tenemos un mensaje completo, esperar más datos
-                    print(f"Datos recibidos parciales: {len(buffer)} bytes")
-                    
-                    # Si el buffer es muy grande, puede que haya un problema
-                    if len(buffer) > BUFFER_SIZE * 10:
-                        print("Buffer demasiado grande, reiniciando...")
-                        buffer = b""
-            
+                    # Procesar cada objeto JSON individualmente si hay más de uno concatenado
+                    decoded = message_data.decode('utf-8')
+                    # Divide por '}{' para separar objetos JSON pegados
+                    json_chunks = []
+                    start = 0
+                    for i in range(1, len(decoded)):
+                        if decoded[i-1] == '}' and decoded[i] == '{':
+                            json_chunks.append(decoded[start:i])
+                            start = i
+                    json_chunks.append(decoded[start:])
+
+                    for chunk in json_chunks:
+                        try:
+                            message = json.loads(chunk)
+                            # Actualizar el estado del juego
+                            if 'game_state' in message:
+                                with self.lock:
+                                    self.game_state = message['game_state']
+                                    print("Estado del juego actualizado correctamente")
+                            elif 'start_game' in message:
+                                print("Recibido mensaje de inicio de juego")
+                        except json.JSONDecodeError as e:
+                            print(f"Error al decodificar JSON: {e}")
+                            print(f"Chunk recibido (primeros 100 bytes): {chunk[:100]}...")
+                            traceback.print_exc()
+            # Si no hay mensaje completo, esperar más datos
+
             except socket.timeout:
                 print("Timeout al recibir datos, reintentando...")
                 continue

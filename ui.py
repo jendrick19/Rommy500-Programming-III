@@ -668,8 +668,9 @@ class UI:
 
     def draw_round_scores(self, game):
         self.screen.fill(BG_COLOR)
-        title = self.font.render("Fin de la ronda", True, (255, 255, 0))
+        title = self.title_font.render("Fin de la ronda", True, (255, 255, 0))
         self.screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 80))
+        
         y = 160
         for idx, player in enumerate(game.players):
             name = getattr(player, "name", f"Jugador {idx+1}")
@@ -677,6 +678,7 @@ class UI:
             text = self.font.render(f"{name}: {score} puntos", True, TEXT_COLOR)
             self.screen.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, y))
             y += 40
+        
         # Mostrar ganador solo si existe
         if hasattr(game, "round_winner") and game.round_winner is not None and 0 <= game.round_winner < len(game.players):
             winner_name = getattr(game.players[game.round_winner], "name", f"Jugador {game.round_winner+1}")

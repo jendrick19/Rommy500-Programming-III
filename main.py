@@ -307,6 +307,7 @@ def main():
     # Bucle principal del juego
     running = True
     showing_round_scores = False
+    last_game_state = None
 
     while running and network.connected:
         # Procesar todos los eventos una sola vez
@@ -315,12 +316,15 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
 
-            # Mostrar pantalla de puntuación si terminó la ronda
+            # Manejar pantalla de puntuación de ronda
             if showing_round_scores:
                 if event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN:
-                    showing_round_scores = False
+                    # Solo el host puede iniciar la siguiente ronda
                     if network.is_host():
+    # Envía el resumen de puntuación a los clientes antes de iniciar la nueva rondas
+                        showing_round_scores = False
                         game.start_new_round()
+                    network.send_game_state(game.to_dict())
                 continue  # No procesar más eventos si estamos mostrando puntuación
 
             # Procesar eventos del juego normalmente
@@ -328,12 +332,21 @@ def main():
                 ui.handle_click(event.pos, game)
             game.handle_event(event)
 
-        # Lógica para mostrar la pantalla de puntuación solo una vez al terminar la ronda
-        if game.state == GAME_STATE_ROUND_END:
-            showing_round_scores = True
-            ui.draw_round_scores(game)
+        # Detectar cambios en el estado del juego para mostrar/ocultar pantalla de puntuación
+        if game.state != last_game_state:
+            if game.state == GAME_STATE_ROUND_END and not showing_round_scores:
+                showing_round_scores = True
+                print(f"Mostrando pantalla de puntuación. Host: {network.is_host()}")
+            elif game.state == GAME_STATE_PLAYING and showing_round_scores:
+                showing_round_scores = False
+                print("Ocultando pantalla de puntuación, nueva ronda iniciada")
+            last_game_state = game.state
+
+        # Mostrar pantalla de puntuación si terminó la ronda
+        if showing_round_scores:
+            ui.draw_round_scores(game, network.is_host())
             pygame.display.flip()
-            continue  # No procesar más eventos hasta que se cierre la pantalla de puntuación
+            continue  # No procesar más lógica hasta que se cierre la pantalla de puntuación
              
         # Actualizar estado del juego
         game.update()

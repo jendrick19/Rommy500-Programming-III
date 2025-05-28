@@ -41,6 +41,9 @@ class Player:
     def lay_down(self, round_num):
         """Baja todas las combinaciones posibles en la mano"""
         laid_down = False
+        initial_trios = self.trios_laid_down
+        initial_sequences = self.sequences_laid_down
+        
         # Bajar todos los tríos posibles
         while self._has_trio():
             trio = self._get_trio()
@@ -50,6 +53,7 @@ class Player:
                     self.remove_from_hand(card)
                 self.trios_laid_down += 1
                 laid_down = True
+        
         # Bajar todas las seguidillas posibles
         while self._has_sequence():
             sequence = self._get_sequence()
@@ -60,19 +64,32 @@ class Player:
                 self.sequences_laid_down += 1
                 laid_down = True
 
-        # Marcar si cumplió el requisito mínimo de la ronda
+        # Verificar si cumplió el requisito mínimo de la ronda
         if not self.has_completed_round_requirement:
-            if round_num == 0 and (self.trios_laid_down >= 1 or self.sequences_laid_down >= 1):
-                self.has_completed_round_requirement = True
-            elif round_num == 1 and self.sequences_laid_down >= 2:
-                self.has_completed_round_requirement = True
-            elif round_num == 2 and self.trios_laid_down >= 3:
-                self.has_completed_round_requirement = True
-            elif round_num == 3 and (self.trios_laid_down >= 1 and self.sequences_laid_down >= 1):
-                self.has_completed_round_requirement = True
+            total_trios = self.trios_laid_down
+            total_sequences = self.sequences_laid_down
+            
+            if round_num == 0:  # Ronda 1: Un Trío y Una Seguidilla
+                if total_trios >= 1 and total_sequences >= 1:
+                    self.has_completed_round_requirement = True
+                    print(f"Jugador {self.id + 1} cumplió requisito ronda 1: {total_trios} tríos, {total_sequences} seguidillas")
+            elif round_num == 1:  # Ronda 2: Dos Seguidillas
+                if total_sequences >= 2:
+                    self.has_completed_round_requirement = True
+                    print(f"Jugador {self.id + 1} cumplió requisito ronda 2: {total_sequences} seguidillas")
+            elif round_num == 2:  # Ronda 3: Tres Tríos
+                if total_trios >= 3:
+                    self.has_completed_round_requirement = True
+                    print(f"Jugador {self.id + 1} cumplió requisito ronda 3: {total_trios} tríos")
+            elif round_num == 3:  # Ronda 4: Una Seguidilla y Dos Tríos (Ronda Completa)
+                if total_trios >= 2 and total_sequences >= 1:
+                    self.has_completed_round_requirement = True
+                    print(f"Jugador {self.id + 1} cumplió requisito ronda 4: {total_trios} tríos, {total_sequences} seguidillas")
 
         if laid_down:
             self.has_laid_down = True
+            print(f"Jugador {self.id + 1} se bajó. Cartas restantes: {len(self.hand)}, Requisito cumplido: {self.has_completed_round_requirement}")
+        
         return laid_down
 
     def can_add_to_combination(self, card, combination_idx, player_idx=None):
@@ -461,6 +478,7 @@ class Player:
                 break
         
         return sequences
+    
     def detect_trios(self):
         """Detecta tríos (3 cartas del mismo valor) incluyendo Jokers"""
         from collections import defaultdict
@@ -482,8 +500,6 @@ class Player:
                 trios.append(trio)
 
         return trios
-
-
 
     def detect_seguidillas(self):
         """Detecta seguidillas (4+ cartas consecutivas del mismo palo) incluyendo Jokers"""
@@ -545,9 +561,6 @@ class Player:
 
         return seguidillas
 
-
-
-
     def to_dict(self):
         return {
             'id': self.id,
@@ -568,7 +581,8 @@ class Player:
             'has_laid_down_trio': self.has_laid_down_trio,
             'has_laid_down_sequence': self.has_laid_down_sequence,
             'sequences_laid_down': self.sequences_laid_down,
-            'trios_laid_down': self.trios_laid_down
+            'trios_laid_down': self.trios_laid_down,
+            'has_completed_round_requirement': self.has_completed_round_requirement
         }
 
     @staticmethod
@@ -591,4 +605,5 @@ class Player:
         player.has_laid_down_sequence = data.get('has_laid_down_sequence', False)
         player.sequences_laid_down = data.get('sequences_laid_down', 0)
         player.trios_laid_down = data.get('trios_laid_down', 0)
+        player.has_completed_round_requirement = data.get('has_completed_round_requirement', False)
         return player

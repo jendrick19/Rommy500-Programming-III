@@ -78,70 +78,88 @@ class UI:
         self.screen.blit(discard_text, (x, y + CARD_HEIGHT + 5))
     
     def draw_players(self, game):
-        """Dibuja información de todos los jugadores"""
+        """Dibuja a todos los jugadores (menos el local) en dos filas horizontales."""
         player_count = len(game.players)
-        
-        # Calcular posiciones
-        if player_count <= 4:
-            positions = [
-                (SCREEN_WIDTH // 2 - 150, 50),  # Arriba
-                (SCREEN_WIDTH - 250, SCREEN_HEIGHT // 2 - 100),  # Derecha
-                (SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT - 200),  # Abajo (jugador local)
-                (50, SCREEN_HEIGHT // 2 - 100)  # Izquierda
-            ]
-        else:
-            # Para más de 4 jugadores, distribuir en círculo
-            positions = []
-            center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
-            radius = min(center_x, center_y) - 150
-            angle_step = 2 * 3.14159 / player_count
-            
-            for i in range(player_count):
-                angle = i * angle_step
-                x = center_x + radius * math.cos(angle) - 150
-                y = center_y + radius * math.sin(angle) - 100
-                positions.append((x, y))
-        
-        # Verificar que el ID del jugador es válido
-        if game.player_id < 0 or game.player_id >= len(game.players):
-            error_text = self.title_font.render(f"Error: ID de jugador no válido ({game.player_id})", True, (255, 0, 0))
-            self.screen.blit(error_text, (20, SCREEN_HEIGHT - 180))
+        local_idx   = game.player_id
+
+        # Validar índice local
+        if local_idx < 0 or local_idx >= player_count:
+            err = self.title_font.render(f"Error: ID de jugador no válido ({local_idx})", True, (255,0,0))
+            self.screen.blit(err, (20, SCREEN_HEIGHT - 180))
             return
-        
-        # Dibujar cada jugador (excepto el jugador local)
-        local_player_idx = game.player_id
+
+        others = player_count - 1
+        if others <= 0:
+            return  # ningún rival que dibujar
+
+        # Márgenes y alturas de fila
+        margin = 100
+        y1 = 80
+        y2 = 200  # segunda fila, justo encima de tu mano
+
+        # Cuántos en la primera y en la segunda
+        row1 = math.ceil(others / 2)
+        row2 = others - row1
+
+        # Ancho aprovechable
+        avail = SCREEN_WIDTH - 2 * margin
+
+        # Generar posiciones
+        positions = []
+        # Fila superior
+        for i in range(row1):
+            x = margin + (i + 1) * (avail / (row1 + 1))
+            positions.append((x, y1))
+        # Fila inferior
+        if row2 > 0:
+            for i in range(row2):
+                x = margin + (i + 1) * (avail / (row2 + 1))
+                positions.append((x, y2))
+
+        # Dibujar rivales consumiendo posiciones
+        pos = 0
         for i, player in enumerate(game.players):
-            if i == local_player_idx:
-                continue  # El jugador local se dibuja separadamente
-            
-            pos_idx = i if i < local_player_idx else i - 1
-            if pos_idx < len(positions):
-                x, y = positions[pos_idx % len(positions)]
-                
-                # Dibujar marco del jugador actual
-                if i == game.current_player_idx:
-                    pygame.draw.rect(self.screen, PLAYER_COLORS[i % len(PLAYER_COLORS)], 
-                                    (x - 10, y - 10, 320, 220), 3, border_radius=10)
-                
-                # Dibujar información del jugador
-                player_text = f"Jugador {i+1}" + (" (Mano)" if player.is_mano else "")
-                player_surface = self.font.render(player_text, True, PLAYER_COLORS[i % len(PLAYER_COLORS)])
-                self.screen.blit(player_surface, (x, y))
-                
-                score_text = f"Puntos: {player.score}"
-                score_surface = self.font.render(score_text, True, TEXT_COLOR)
-                self.screen.blit(score_surface, (x, y + 25))
-                
-                cards_text = f"Cartas: {len(player.hand)}"
-                cards_surface = self.font.render(cards_text, True, TEXT_COLOR)
-                self.screen.blit(cards_surface, (x, y + 50))
-                
-                status_text = "Bajado" if player.has_laid_down else "No bajado"
-                status_surface = self.font.render(status_text, True, TEXT_COLOR)
-                self.screen.blit(status_surface, (x, y + 75))
-                
-                # Dibujar combinaciones del jugador
-                self.draw_player_combinations(player, x, y + 100)
+            if i == local_idx:
+                continue
+
+            x, y = positions[pos]
+            pos += 1
+
+            # Marco si está activo
+            if i == game.current_player_idx:
+                pygame.draw.rect(
+                    self.screen,
+                    PLAYER_COLORS[i % len(PLAYER_COLORS)],
+                    (x - 10, y - 10, 150, 110),
+                    3, border_radius=10
+                )
+
+            # Nombre y “(Mano)” si aplica
+            label = f"Jugador {i+1}" + (" (Mano)" if player.is_mano else "")
+            self.screen.blit(
+                self.font.render(label, True, PLAYER_COLORS[i % len(PLAYER_COLORS)]),
+                (x, y)
+            )
+
+            # Puntos, cartas, estado
+            self.screen.blit(
+                self.font.render(f"Puntos: {player.score}", True, TEXT_COLOR),
+                (x, y + 25)
+            )
+            self.screen.blit(
+                self.font.render(f"Cartas: {len(player.hand)}", True, TEXT_COLOR),
+                (x, y + 50)
+            )
+            estado = "Bajado" if player.has_laid_down else "No bajado"
+            self.screen.blit(
+                self.font.render(estado, True, TEXT_COLOR),
+                (x, y + 75)
+            )
+
+            # Combos bajados
+            self.draw_player_combinations(player, x, y + 100)
+
+
     
     def draw_player_combinations(self, player, x, y):
         """Dibuja las combinaciones de un jugador"""

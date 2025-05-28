@@ -53,7 +53,7 @@ class Network:
                 print(f"Conectando a {self.ip}:{self.port}")
             
             # Intentar primero con la IP proporcionada
-            self.socket.settimeout(5)  # Timeout de 5 segundos
+            self.socket.settimeout(10)  # Timeout de 5 segundos
             self.socket.connect((self.ip, self.port))
             self.connected = True
             
@@ -71,7 +71,7 @@ class Network:
             try:
                 self.ip = "127.0.0.1"
                 self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.socket.settimeout(5)
+                self.socket.settimeout(10)
                 self.socket.connect((self.ip, self.port))
                 self.connected = True
                 

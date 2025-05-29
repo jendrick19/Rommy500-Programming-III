@@ -215,6 +215,7 @@ def main():
     # Inicializar juego
     try:
         game = Game(network)
+        print(f"[MAIN] Soy el jugador local con ID: {game.player_id}")
         import os
 
         try:
@@ -279,6 +280,7 @@ def main():
         if game_state is not None:
             print("Estado del juego recibido, iniciando juego...")
             waiting_for_init = False
+            print("Recibido estado → discard_offered_to:", game.discard_offered_to, "| Yo soy:", game.player_id)
         
         # Procesar eventos mientras esperamos
         for event in pygame.event.get():
@@ -305,13 +307,25 @@ def main():
     while running and network.connected:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
-            
-            # Procesar eventos del juego
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                ui.handle_click(event.pos, game)
-            
+               running = False
+
+    # ✅ Solo procesamos clics del mouse aquí
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+        # 🔒 Si la carta del descarte se está ofreciendo a otro jugador, ignora clics
+                 if game.initial_discard_offer and game.discard_offered_to != game.player_id:
+                    continue  # No puedes interactuar
+
+        # ✔ Jugador actual puede aceptar/rechazar la carta del descarte
+                 if game.initial_discard_offer and game.discard_offered_to == game.player_id:
+                    ui.handle_click(event.pos, game)
+
+        # ✔ Jugador en turno puede hacer acciones normales
+                 elif not game.initial_discard_offer and game.current_player_idx == game.player_id:
+                      ui.handle_click(event.pos, game)
+
+    # Otros tipos de eventos
             game.handle_event(event)
+
         
         # Actualizar estado del juego
         game.update()

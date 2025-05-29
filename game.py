@@ -19,6 +19,12 @@ class Game:
         self.deck_checked = False
         self.eliminated_players = []
         self.player_id = network.get_id()  # ID del jugador local
+        self.rejected_discard = []             # Jugadores que rechazaron la carta del descarte inicial
+        self.initial_discard_offer = True      # Bandera de si estamos en la fase de oferta de descarte
+        self.discard_offered_to = self.player_id           # Jugador al que se le ofrece actualmente
+        self.discard_origin_player = 0  
+        self.reject_rect = None
+        self.take_penalty_rect = None
         
         # Inicializar el juego si somos el host
         if network.is_host():
@@ -213,6 +219,13 @@ class Game:
         card = self.discard_pile.take()
         if not card:
             return False
+        player = self.players[self.discard_offered_to]
+        player.hand.append(card)
+        if is_penalty and self.discard_offered_to != self.discard_origin_player:
+            player.hand.extend(self.deck.draw(2))
+        self.initial_discard_offer = False
+        self.rejected_discard = []
+        self.discard_offered_to = None
         
         player.add_to_hand(card)
         
@@ -236,6 +249,33 @@ class Game:
             })
         
         return True
+    def reject_discard_offer(self):
+        
+        """El jugador actual rechaza la carta del descarte inicial."""
+        self.rejected_discard.append(self.discard_offered_to)
+
+        print(f"[HOST] Jugador {self.discard_offered_to} rechazó el descarte.")
+        print(f"[HOST] Rechazaron: {self.rejected_discard}")
+
+    # Buscar siguiente jugador que no haya rechazado
+        next_player = (self.discard_offered_to + 1) % len(self.players)
+        while next_player in self.rejected_discard and next_player != self.discard_origin_player:
+            next_player = (next_player + 1) % len(self.players)
+
+        if next_player == self.discard_origin_player:
+           print("[HOST] Todos rechazaron la carta. Terminando fase de oferta.")
+           self.initial_discard_offer = False
+           self.rejected_discard = []
+           self.discard_offered_to = None
+        else:
+           print(f"[HOST] Ahora se ofrece al jugador {next_player}")
+           self.discard_offered_to = next_player
+
+        if self.network.is_host():
+           self.network.send_game_state(self.to_dict())
+
+
+
     
     def lay_down_combination(self):
         """El jugador actual baja sus combinaciones"""

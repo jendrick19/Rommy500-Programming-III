@@ -288,7 +288,6 @@ class Network:
             print(f"Objeto problemático: {str(game_state)[:200]}...")  # Mostrar parte del objeto
             traceback.print_exc()
             return False
-    
     def _simplify_game_state(self, obj):
         """Convierte objetos complejos a tipos básicos de Python para serialización JSON"""
         if isinstance(obj, dict):

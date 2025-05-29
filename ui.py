@@ -13,6 +13,9 @@ class UI:
         self.selected_combination = None
         self.selected_player = None
         self.action_buttons = []
+        self.reject_rect = None
+        self.take_penalty_rect = None
+        
     
     def draw(self, game):
         """Dibuja la interfaz del juego"""
@@ -39,8 +42,7 @@ class UI:
         # Dibujar mano del jugador local
         self.draw_player_hand(game)
         
-        # Dibujar botones de acción
-        self.draw_action_buttons(game)
+        
         
         # Dibujar mensaje de estado
         self.draw_status_message(game)
@@ -49,6 +51,8 @@ class UI:
         if game.state == GAME_STATE_ROUND_END:
             self.draw_score_table(game)
             return
+    # Dibujar botones de acción
+        self.draw_action_buttons(game)
     
     def draw_deck(self, game, x, y):
         """Dibuja el mazo"""
@@ -327,6 +331,7 @@ class UI:
                                     y + mini_height // 2 - mini_text.get_height() // 2))
     
     def draw_action_buttons(self, game):
+        print(f"[UI DEBUG] draw_action_buttons llamada con → initial_discard_offer: {game.initial_discard_offer}, discard_offered_to: {game.discard_offered_to}, player_id: {game.player_id}")
         """Dibuja los botones de acción"""
         self.action_buttons = []
         
@@ -396,7 +401,41 @@ class UI:
             pygame.draw.rect(self.screen, BUTTON_COLOR, add_to_combination_rect, border_radius=5)
             add_to_combination_text = self.font.render("Añadir a la combinación", True, TEXT_COLOR)
             self.screen.blit(add_to_combination_text, (add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
-    
+        if game.initial_discard_offer:
+           if game.initial_discard_offer:
+              if game.current_player_idx == game.discard_offered_to:
+                 font = pygame.font.SysFont(None, 30)
+
+        if game.initial_discard_offer and game.discard_offered_to == game.player_id:
+           print("[UI] Mostrando botones de descarte al jugador", game.player_id)
+           font = pygame.font.SysFont(None, 30)
+
+    # Botón Rechazar
+           self.reject_rect = pygame.Rect(100, 500, 200, 50)
+           pygame.draw.rect(self.screen, (180, 50, 50), self.reject_rect)
+           text1 = font.render("Rechazar Descarte", True, (255, 255, 255))
+           self.screen.blit(text1, (self.reject_rect.x + 10, self.reject_rect.y + 5))
+
+    # Botón Tomar
+           
+           self.take_penalty_rect = pygame.Rect(320, 500, 300, 50)
+           pygame.draw.rect(self.screen, (50, 180, 50), self.take_penalty_rect)
+           if game.discard_offered_to == game.discard_origin_player:
+              label = "Tomar del Descarte"
+           else:
+              label = "Tomar del Descarte (penalización)"
+              text2 = font.render(label, True, (255, 255, 255))
+              self.screen.blit(text2, (self.take_penalty_rect.x + 10, self.take_penalty_rect.y + 5))
+
+              print(f"[UI] Mostrando botones a jugador {game.player_id}")
+              pygame.draw.rect(self.screen, (0, 0, 0), self.reject_rect, 2)
+              pygame.draw.rect(self.screen, (0, 0, 0), self.take_penalty_rect, 2)
+
+
+
+
+
+
     def draw_status_message(self, game):
         """Dibuja un mensaje de estado"""
         message = ""
@@ -422,6 +461,23 @@ class UI:
 
     
     def handle_click(self, pos, game):
+        if self.reject_rect is not None and self.reject_rect.collidepoint(pos):
+           game.reject_discard_offer()
+           self.reject_rect = None
+           self.take_penalty_rect = None
+
+        if self.take_penalty_rect is not None and self.take_penalty_rect.collidepoint(pos):
+           penalizar = game.discard_offered_to != game.discard_origin_player
+           game.take_card_from_discard(is_penalty=penalizar)
+
+           if game.network.is_host():
+              game.network.send_game_state(game.to_dict())
+
+           self.reject_rect = None
+           self.take_penalty_rect = None
+
+
+
         """Maneja los clics del ratón"""
         # Verificar si se hizo clic en un botón de acción
         for action, rect in self.action_buttons:

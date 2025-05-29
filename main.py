@@ -14,6 +14,8 @@ def main():
     icon = pygame.image.load("balatro.jpg")
     icon = pygame.transform.smoothscale(icon, (130, 165))
     clock = pygame.time.Clock()
+    last_broadcast= time.time()
+    broadcast_interval = 2  # Intervalo de broadcast en segundos
     
     # Pantalla inicial para elegir entre host o unirse
     network_mode = None
@@ -310,6 +312,11 @@ def main():
     last_game_state = None
 
     while running and network.connected:
+        # Enviar el estado periódicamente SOLO si eres host
+        if network.is_host() and (time.time() - last_broadcast > broadcast_interval):
+            print(f"[HOST] Enviando estado a clientes. Ronda: {game.round_num}, Jugador actual: {game.current_player_idx}, Estado: {game.state}")
+            network.send_game_state(game.to_dict())
+            last_broadcast = time.time()
         # Procesar todos los eventos una sola vez
         events = pygame.event.get()
         for event in events:
@@ -318,12 +325,15 @@ def main():
 
             # Manejar pantalla de puntuación de ronda
             if showing_round_scores:
+                ui.draw_round_scores(game, is_host=network.is_host())
                 if event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN:
                     # Solo el host puede iniciar la siguiente ronda
                     if network.is_host():
     # Envía el resumen de puntuación a los clientes antes de iniciar la nueva rondas
+                        print("[HOST] Iniciando nueva ronda")
                         showing_round_scores = False
                         game.start_new_round()
+                        print(f"[HOST] Estado tras iniciar nueva ronda: ronda={game.round_num}, jugador={game.current_player_idx}, estado={game.state}")
                     network.send_game_state(game.to_dict())
                 continue  # No procesar más eventos si estamos mostrando puntuación
 
@@ -334,22 +344,27 @@ def main():
 
         # Detectar cambios en el estado del juego para mostrar/ocultar pantalla de puntuación
         if game.state != last_game_state:
+            print(f"[{('HOST' if network.is_host() else 'CLIENTE')}] Cambio de estado: {last_game_state} -> {game.state}")
+
             if game.state == GAME_STATE_ROUND_END and not showing_round_scores:
+                print(f"[{('HOST' if network.is_host() else 'CLIENTE')}] Mostrando pantalla de puntuación")
+
                 showing_round_scores = True
                 print(f"Mostrando pantalla de puntuación. Host: {network.is_host()}")
+
             elif game.state == GAME_STATE_PLAYING and showing_round_scores:
+                print(f"[{('HOST' if network.is_host() else 'CLIENTE')}] Mostrando pantalla de puntuación")
                 showing_round_scores = False
                 print("Ocultando pantalla de puntuación, nueva ronda iniciada")
+                if network.is_host():
+                   network.send_game_state(game.to_dict())  # Enviar estado actualizado a clientes
             last_game_state = game.state
+                
 
-        # Mostrar pantalla de puntuación si terminó la ronda
-        if showing_round_scores:
-            ui.draw_round_scores(game)
-            pygame.display.flip()
-            continue  # No procesar más lógica hasta que se cierre la pantalla de puntuación
-             
         # Actualizar estado del juego
         game.update()
+        if not network.is_host():
+            print(f"[CLIENTE] Estado local tras update: ronda={game.round_num}, jugador={game.current_player_idx}, estado={game.state}")
         # Renderizar
         screen.fill(BG_COLOR)
         ui.draw(game)
@@ -358,6 +373,7 @@ def main():
     
     # Si se desconectó, mostrar mensaje
     if not network.connected:
+        print(f"[{('HOST' if network.is_host() else 'CLIENTE')}] Desconectado del servidor")
         font = pygame.font.SysFont(None, 32)
         error_text = font.render("Conexión perdida. Volviendo al menú principal...", True, (255, 0, 0))
         screen.fill(BG_COLOR)

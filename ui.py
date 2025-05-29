@@ -47,7 +47,7 @@ class UI:
     
         # Si la ronda terminó, mostrar tabla de puntuaciones y botón
         if game.state == GAME_STATE_ROUND_END:
-            self.draw_score_table(game)
+            self.draw_round_scores(game)
             return
     
     def draw_deck(self, game, x, y):
@@ -527,6 +527,7 @@ class UI:
             if game.network.is_host():
                 game.start_new_round()
                 game.update()
+
         elif action == "add_to_combo" and self.selected_card is not None and self.selected_combination is not None and self.selected_player is not None:
             # Permitir añadir a cualquier combinación bajada (propia o de otro jugador)
             game.add_to_combination(
@@ -539,30 +540,6 @@ class UI:
             self.selected_card = None
         game.update()
 
-    def draw_score_table(self, game):
-        # Fondo semitransparente
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.set_alpha(220)
-        overlay.fill((30, 30, 30))
-        self.screen.blit(overlay, (0, 0))
-
-        title = self.title_font.render("Fin de la ronda", True, (255, 255, 0))
-        self.screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 100))
-
-        # Tabla de puntuaciones
-        font = pygame.font.SysFont(None, 36)
-        y = 180
-        for player in sorted(game.players, key=lambda p: -p.score):
-            text = font.render(f"{player.name}: {player.score} puntos", True, (255, 255, 255))
-            self.screen.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, y))
-            y += 50
-
-        # Botón para continuar
-        button_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, y + 40, 200, 50)
-        pygame.draw.rect(self.screen, BUTTON_COLOR, button_rect, border_radius=8)
-        btn_text = font.render("Siguiente ronda", True, (255, 255, 255))
-        self.screen.blit(btn_text, (button_rect.centerx - btn_text.get_width() // 2, button_rect.centery - btn_text.get_height() // 2))
-        self.action_buttons = [("next_round", button_rect)]
 
     def animate_deal(self, game):
         """Animación de reparto de cartas a todos los jugadores antes de que aparezcan en la mano"""
@@ -684,7 +661,7 @@ class UI:
         # Fallback
         return pygame.Rect(100 + pid * 200, 150 + cidx * 30, 120, 25)
 
-    def draw_round_scores(self, game):
+    def draw_round_scores(self, game, is_host=False):
         self.screen.fill(BG_COLOR)
         title = self.title_font.render("Fin de la ronda", True, (255, 255, 0))
         self.screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 80))
@@ -702,5 +679,17 @@ class UI:
             winner_name = getattr(game.players[game.round_winner], "name", f"Jugador {game.round_winner+1}")
             winner_text = self.font.render(f"Ganador de la ronda: {winner_name}", True, (0, 255, 0))
             self.screen.blit(winner_text, (SCREEN_WIDTH // 2 - winner_text.get_width() // 2, y + 20))
-        continue_text = self.font.render("Haz clic para continuar...", True, (200, 200, 200))
-        self.screen.blit(continue_text, (SCREEN_WIDTH // 2 - continue_text.get_width() // 2, y + 70))
+        if is_host:
+            # Botón para iniciar la siguiente ronda
+            next_button_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, y + 80, 200, 50)
+            pygame.draw.rect(self.screen, BUTTON_COLOR, next_button_rect, border_radius=8)
+            btn_text = self.font.render("Siguiente ronda", True, (255, 255, 255))
+            self.screen.blit(btn_text, (next_button_rect.centerx - btn_text.get_width() // 2, next_button_rect.centery - btn_text.get_height() // 2))
+            self.action_buttons = [("next_round", next_button_rect)]
+        else:
+            next_button_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, y + 80, 200, 50)
+            pygame.draw.rect(self.screen, DISABLED_BUTTON_COLOR, next_button_rect, border_radius=8)
+            btn_text = self.font.render("Siguiente ronda", True, (255, 255, 255))
+            self.screen.blit(btn_text, (next_button_rect.centerx - btn_text.get_width() // 2, next_button_rect.centery - btn_text.get_height() // 2))
+            self.action_buttons = [("next_round", next_button_rect)]
+        pygame.display.flip()

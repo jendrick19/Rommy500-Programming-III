@@ -10,7 +10,9 @@ class Game:
     def __init__(self, network):
         self.network = network
         self.players = []
-        self.deck = Deck()
+        num_players = network.get_player_count()
+        num_decks = max(1, (num_players + 2) // 3)  # 1 mazo por cada 3 jugadores
+        self.deck = Deck(num_decks=num_decks)
         self.discard_pile = DiscardPile()
         self.current_player_idx = 0
         self.round_num = 0

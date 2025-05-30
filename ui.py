@@ -13,8 +13,7 @@ class UI:
         self.selected_combination = None
         self.selected_player = None
         self.action_buttons = []
-        self.reject_rect = None
-        self.take_penalty_rect = None
+
         
     
     def draw(self, game):
@@ -41,9 +40,7 @@ class UI:
         
         # Dibujar mano del jugador local
         self.draw_player_hand(game)
-        
-        
-        
+
         # Dibujar mensaje de estado
         self.draw_status_message(game)
     
@@ -334,13 +331,8 @@ class UI:
         print(f"[UI DEBUG] draw_action_buttons llamada con → initial_discard_offer: {game.initial_discard_offer}, discard_offered_to: {game.discard_offered_to}, player_id: {game.player_id}")
         """Dibuja los botones de acción"""
         self.action_buttons = []
-        
         # Verificar que el ID del jugador es válido
         if game.player_id < 0 or game.player_id >= len(game.players):
-            return
-            
-        # Solo mostrar botones si es el turno del jugador local
-        if game.current_player_idx != game.player_id:
             return
         
         player = game.players[game.player_id]
@@ -350,6 +342,39 @@ class UI:
         start_x = SCREEN_WIDTH - button_width - 20
         start_y = 20
         
+        if game.initial_discard_offer:
+        # If it's the player being offered, show "Rechazar Descarte" and (if not mano) "Tomar del Descarte (Penalización)"
+            if game.discard_offered_to == game.player_id:
+                font = pygame.font.SysFont(None, 30)
+                # Only the mano gets "Rechazar Descarte" first
+                if game.discard_offered_to == game.discard_origin_player:
+                    # Only "Rechazar Descarte"
+                    reject_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
+                    pygame.draw.rect(self.screen, BUTTON_COLOR, reject_rect, border_radius=5)
+                    reject_text = font.render("Rechazar Descarte", True, (255, 255, 255))
+                    self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2, 
+                                                reject_rect.centery - reject_text.get_height() // 2))
+                    self.action_buttons.append(("reject_discard", reject_rect))
+                else:
+                    # For other players: both "Tomar del Descarte (Penalización)" and "Rechazar Descarte"
+                    take_penalty_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
+                    pygame.draw.rect(self.screen, BUTTON_COLOR, take_penalty_rect, border_radius=5)
+                    take_penalty_text = font.render("Tomar del Descarte (Penalización)", True, (255, 255, 255))
+                    self.screen.blit(take_penalty_text, (take_penalty_rect.centerx - take_penalty_text.get_width() // 2, 
+                                                        take_penalty_rect.centery - take_penalty_text.get_height() // 2))
+                    self.action_buttons.append(("take_discard_penalty", take_penalty_rect))
+
+                    reject_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 4, button_width, button_height)
+                    pygame.draw.rect(self.screen, BUTTON_COLOR, reject_rect, border_radius=5)
+                    reject_text = font.render("Rechazar Descarte", True, (255, 255, 255))
+                    self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2, 
+                                                reject_rect.centery - reject_text.get_height() // 2))
+                    self.action_buttons.append(("reject_discard", reject_rect))
+            return
+        
+        # Solo mostrar botones si es el turno del jugador local
+        if game.current_player_idx != game.player_id:
+            return
         # Botón para tomar del mazo
         if not player.took_discard and not player.took_penalty:
             draw_deck_rect = pygame.Rect(start_x, start_y, button_width, button_height)
@@ -401,41 +426,7 @@ class UI:
             pygame.draw.rect(self.screen, BUTTON_COLOR, add_to_combination_rect, border_radius=5)
             add_to_combination_text = self.font.render("Añadir a la combinación", True, TEXT_COLOR)
             self.screen.blit(add_to_combination_text, (add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
-        if game.initial_discard_offer:
-           if game.initial_discard_offer:
-              if game.current_player_idx == game.discard_offered_to:
-                 font = pygame.font.SysFont(None, 30)
-
-        if game.initial_discard_offer and game.discard_offered_to == game.player_id:
-           print("[UI] Mostrando botones de descarte al jugador", game.player_id)
-           font = pygame.font.SysFont(None, 30)
-
-    # Botón Rechazar
-           self.reject_rect = pygame.Rect(100, 500, 200, 50)
-           pygame.draw.rect(self.screen, (180, 50, 50), self.reject_rect)
-           text1 = font.render("Rechazar Descarte", True, (255, 255, 255))
-           self.screen.blit(text1, (self.reject_rect.x + 10, self.reject_rect.y + 5))
-
-    # Botón Tomar
-           
-           self.take_penalty_rect = pygame.Rect(320, 500, 300, 50)
-           pygame.draw.rect(self.screen, (50, 180, 50), self.take_penalty_rect)
-           if game.discard_offered_to == game.discard_origin_player:
-              label = "Tomar del Descarte"
-           else:
-              label = "Tomar del Descarte (penalización)"
-              text2 = font.render(label, True, (255, 255, 255))
-              self.screen.blit(text2, (self.take_penalty_rect.x + 10, self.take_penalty_rect.y + 5))
-
-              print(f"[UI] Mostrando botones a jugador {game.player_id}")
-              pygame.draw.rect(self.screen, (0, 0, 0), self.reject_rect, 2)
-              pygame.draw.rect(self.screen, (0, 0, 0), self.take_penalty_rect, 2)
-
-
-
-
-
-
+        
     def draw_status_message(self, game):
         """Dibuja un mensaje de estado"""
         message = ""
@@ -461,23 +452,7 @@ class UI:
 
     
     def handle_click(self, pos, game):
-        if self.reject_rect is not None and self.reject_rect.collidepoint(pos):
-           game.reject_discard_offer()
-           self.reject_rect = None
-           self.take_penalty_rect = None
-
-        if self.take_penalty_rect is not None and self.take_penalty_rect.collidepoint(pos):
-           penalizar = game.discard_offered_to != game.discard_origin_player
-           game.take_card_from_discard(is_penalty=penalizar)
-
-           if game.network.is_host():
-              game.network.send_game_state(game.to_dict())
-
-           self.reject_rect = None
-           self.take_penalty_rect = None
-
-
-
+        
         """Maneja los clics del ratón"""
         # Verificar si se hizo clic en un botón de acción
         for action, rect in self.action_buttons:
@@ -541,7 +516,22 @@ class UI:
             if game.network.is_host():
                 game.start_new_round()
                 game.update()
-        elif action == "add_to_combo" and self.selected_card is not None and self.selected_combination is not None:
+        elif action == "reject_discard":
+            game.reject_discard_offer()
+            self.reject_rect = None
+            self.take_penalty_rect = None
+            game.update()
+        elif action == "take_discard_penalty":
+            game.take_card_from_discard(is_penalty=True)
+            game.update()
+            if game.network.is_host():
+                    game.network.send_game_state(game.to_dict())
+            self.reject_rect = None
+            self.take_penalty_rect = None
+
+
+        elif action == "add_to_combo" and self.selected_card is not None and self.selected_combination is not None and self.selected_player is not None:
+            # Permitir añadir a cualquier combinación bajada (propia o de otro jugador)
             game.add_to_combination(
                 self.selected_card,
                 self.selected_combination,

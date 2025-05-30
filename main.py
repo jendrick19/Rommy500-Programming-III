@@ -309,21 +309,31 @@ def main():
             if event.type == pygame.QUIT:
                running = False
 
-    # ✅ Solo procesamos clics del mouse aquí
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-        # 🔒 Si la carta del descarte se está ofreciendo a otro jugador, ignora clics
-                 if game.initial_discard_offer and game.discard_offered_to != game.player_id:
-                    continue  # No puedes interactuar
+            # Manejar pantalla de puntuación de ronda
+            if showing_round_scores:
+                ui.draw_round_scores(game, is_host=network.is_host())
+                if event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN:
+                    if game.initial_discard_offer and game.discard_offered_to != game.player_id:
+                        continue  # No puedes interactuar
+                    # ✔ Jugador actual puede aceptar/rechazar la carta del descarte
+                    if game.initial_discard_offer and game.discard_offered_to == game.player_id:
+                        ui.handle_click(event.pos, game)
 
-        # ✔ Jugador actual puede aceptar/rechazar la carta del descarte
-                 if game.initial_discard_offer and game.discard_offered_to == game.player_id:
-                    ui.handle_click(event.pos, game)
+                    # ✔ Jugador en turno puede hacer acciones normales
+                    elif not game.initial_discard_offer and game.current_player_idx == game.player_id:
+                      ui.handle_click(event.pos, game)# Solo el host puede iniciar la siguiente ronda
+                    if network.is_host():
+                    # Envía el resumen de puntuación a los clientes antes de iniciar la nueva rondas
+                        print("[HOST] Iniciando nueva ronda")
+                        showing_round_scores = False
+                        game.start_new_round()
+                        print(f"[HOST] Estado tras iniciar nueva ronda: ronda={game.round_num}, jugador={game.current_player_idx}, estado={game.state}")
+                    network.send_game_state(game.to_dict())
+                continue  # No procesar más eventos si estamos mostrando puntuación
 
-        # ✔ Jugador en turno puede hacer acciones normales
-                 elif not game.initial_discard_offer and game.current_player_idx == game.player_id:
-                      ui.handle_click(event.pos, game)
-
-    # Otros tipos de eventos
+            # Procesar eventos del juego normalmente
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                ui.handle_click(event.pos, game)
             game.handle_event(event)
 
         

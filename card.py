@@ -80,25 +80,21 @@ class Card:
 
 
 class Deck:
-    def __init__(self):
+    def __init__(self, num_decks=1):
         self.cards = []
+        self.num_decks = num_decks
         self.reset()
-    
+
     def reset(self):
         self.cards = []
-        # Crear las 52 cartas estándar
-        for suit in SUITS:
-            for value in VALUES:
-                self.cards.append(Card(value, suit))
-        
-        # Añadir un Joker
-        self.cards.append(Card('JOKER'))
-        self.cards.append(Card('JOKER'))
-        
-        
-        # Barajar
+        for _ in range(self.num_decks):
+            for suit in SUITS:
+                for value in VALUES:
+                    self.cards.append(Card(value, suit))
+            self.cards.append(Card('JOKER'))
+            self.cards.append(Card('JOKER'))
         self.shuffle()
-    
+
     def shuffle(self):
         random.shuffle(self.cards)
     
@@ -119,14 +115,18 @@ class Deck:
     
     def to_dict(self):
         return {
-            'cards': [card.to_dict() for card in self.cards]
+            'cards': [card.to_dict() for card in self.cards],
+            'num_decks': self.num_decks
         }
+
     
     @staticmethod
     def from_dict(data):
-        deck = Deck()
+        num_decks = data.get('num_decks', 1)
+        deck = Deck(num_decks=num_decks)
         deck.cards = [Card.from_dict(card_data) for card_data in data['cards']]
         return deck
+
 
 class DiscardPile:
     def __init__(self):

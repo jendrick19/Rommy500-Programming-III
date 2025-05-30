@@ -1,6 +1,6 @@
 import socket
 import threading
-import json
+import msgpack
 import time
 import traceback
 from constants import DEFAULT_PORT, BUFFER_SIZE
@@ -53,7 +53,7 @@ class Network:
                 print(f"Conectando a {self.ip}:{self.port}")
             
             # Intentar primero con la IP proporcionada
-            self.socket.settimeout(5)  # Timeout de 5 segundos
+            self.socket.settimeout(10)  # Timeout de 5 segundos
             self.socket.connect((self.ip, self.port))
             self.connected = True
             
@@ -71,7 +71,7 @@ class Network:
             try:
                 self.ip = "127.0.0.1"
                 self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.socket.settimeout(5)
+                self.socket.settimeout(10)
                 self.socket.connect((self.ip, self.port))
                 self.connected = True
                 
@@ -122,14 +122,12 @@ class Network:
                 if self.game_state:
                     try:
                         # Dividir el mensaje en partes más pequeñas para evitar problemas de buffer
-                        json_data = json.dumps({'game_state': self.game_state}, ensure_ascii=True)
-                        
+                        packed_data = msgpack.packb({'game_state': self.game_state}, use_bin_type=True)
                         # Enviar en fragmentos de 1024 bytes
-                        for i in range(0, len(json_data), 1024):
-                            fragment = json_data[i:i+1024]
-                            client_socket.send(fragment.encode('utf-8'))
-                            time.sleep(0.01)  # Pequeña pausa para evitar saturación
-                        
+                        for i in range(0, len(packed_data), 1024):
+                            fragment = packed_data[i:i+1024]
+                            client_socket.send(fragment)
+                            time.sleep(0.01)
                         # Enviar un marcador de fin de mensaje
                         client_socket.send(b'<END>')
                         
@@ -157,24 +155,18 @@ class Network:
                 
                 # Verificar si tenemos un mensaje completo
                 if b'<END>' in buffer:
-                    # Extraer el mensaje completo
                     message_data, buffer = buffer.split(b'<END>', 1)
-                    
-                    # Procesar el mensaje
                     try:
-                        message = json.loads(message_data.decode('utf-8'))
-                        
-                        # Si es una acción del juego, procesarla
+                        message = msgpack.unpackb(message_data, raw=False)
                         if 'action' in message:
                             self.process_action(message['action'])
-                        
-                        # Reenviar el estado del juego a todos los clientes
                         if self.game_state:
-                            self.broadcast(json.dumps({'game_state': self.game_state}, ensure_ascii=True).encode('utf-8'))
-                    except json.JSONDecodeError as e:
+                            self.broadcast(msgpack.packb({'game_state': self.game_state}, use_bin_type=True) + b'<END>')
+                    except Exception as e:
                         print(f"Error al decodificar mensaje del cliente {client_id}: {e}")
-                        print(f"Datos recibidos: {message_data[:100]}...")  # Mostrar los primeros 100 caracteres
+                        print(f"Datos recibidos: {message_data[:100]}...")
                         traceback.print_exc()
+
             
             except Exception as e:
                 print(f"Error al manejar cliente {client_id}: {e}")
@@ -200,39 +192,23 @@ class Network:
                 # Acumular datos en el buffer
                 buffer += data
                 
-                # Verificar si tenemos un mensaje completo
-                if b'<END>' in buffer:
-                    # Extraer el mensaje completo
+                # Procesar todos los mensajes completos en el buffer
+                while b'<END>' in buffer:
                     message_data, buffer = buffer.split(b'<END>', 1)
-                    
                     try:
-                        # Para depuración
-                        print(f"Mensaje completo recibido: {len(message_data)} bytes")
-                        
-                        # Intentar decodificar y cargar el JSON
-                        message = json.loads(message_data.decode('utf-8'))
-                        
-                        # Actualizar el estado del juego
+                        message = msgpack.unpackb(message_data, raw=False)
                         if 'game_state' in message:
                             with self.lock:
                                 self.game_state = message['game_state']
                                 print("Estado del juego actualizado correctamente")
                         elif 'start_game' in message:
                             print("Recibido mensaje de inicio de juego")
-                    
-                    except json.JSONDecodeError as e:
-                        print(f"Error al decodificar JSON: {e}")
-                        print(f"Datos recibidos (primeros 100 bytes): {message_data[:100]}...")
+                    except Exception as e:
+                        print(f"Error al decodificar MessagePack: {e}")
+                        print(f"Datos recibidos: {message_data[:100]}...")
                         traceback.print_exc()
-                else:
-                    # Si no tenemos un mensaje completo, esperar más datos
-                    print(f"Datos recibidos parciales: {len(buffer)} bytes")
-                    
-                    # Si el buffer es muy grande, puede que haya un problema
-                    if len(buffer) > BUFFER_SIZE * 10:
-                        print("Buffer demasiado grande, reiniciando...")
-                        buffer = b""
-            
+            # Si no hay mensaje completo, esperar más datos
+
             except socket.timeout:
                 print("Timeout al recibir datos, reintentando...")
                 continue
@@ -246,18 +222,12 @@ class Network:
         print("Desconectado del servidor")
     
     def send_action(self, action):
-        """Envía una acción al servidor (solo para clientes)"""
         if not self.connected:
             return False
-        
         try:
-            # Serializar con ensure_ascii=True para evitar problemas con caracteres Unicode
-            message = json.dumps({'action': action}, ensure_ascii=True).encode('utf-8')
-            
-            # Enviar el mensaje seguido de un marcador de fin
+            message = msgpack.packb({'action': action}, use_bin_type=True)
             self.socket.send(message)
             self.socket.send(b'<END>')
-            
             return True
         except Exception as e:
             print(f"Error al enviar acción: {e}")
@@ -265,27 +235,18 @@ class Network:
             return False
     
     def send_game_state(self, game_state):
-        """Envía el estado del juego a todos los clientes (solo para el host)"""
         if not self.connected or self.mode != "host":
             return False
-        
         with self.lock:
             self.game_state = game_state
-        
         try:
-            # Convertir objetos complejos a tipos básicos de Python
             simplified_state = self._simplify_game_state(game_state)
-            
-            # Serializar con ensure_ascii=True para evitar problemas con caracteres Unicode
-            json_data = json.dumps({'game_state': simplified_state}, ensure_ascii=True)
-            
-            # Enviar el mensaje seguido de un marcador de fin
-            message = json_data.encode('utf-8') + b'<END>'
-            
+            packed_data = msgpack.packb({'game_state': simplified_state}, use_bin_type=True)
+            message = packed_data + b'<END>'
             return self.broadcast(message)
         except Exception as e:
             print(f"Error al serializar el estado del juego: {e}")
-            print(f"Objeto problemático: {str(game_state)[:200]}...")  # Mostrar parte del objeto
+            print(f"Objeto problemático: {str(game_state)[:200]}...")
             traceback.print_exc()
             return False
     def _simplify_game_state(self, obj):
@@ -348,7 +309,7 @@ class Network:
             return False
         
         # Enviar mensaje de inicio de juego
-        message = json.dumps({'start_game': True}, ensure_ascii=True).encode('utf-8') + b'<END>'
+        message = msgpack.packb({'start_game': True}, use_bin_type=True) + b'<END>'
         return self.broadcast(message)
     
     def receive_game_state(self):
@@ -369,47 +330,3 @@ class Network:
             self.socket.close()
         except:
             pass
-
-class NetworkOptimized:
-    def __init__(self):
-        self.compression = True  # Comprimir mensajes JSON
-        self.delta_sync = True   # Solo enviar cambios, no estado completo
-    
-    def send_delta_update(self, changes):
-        """Envía solo los cambios en lugar del estado completo"""
-        compressed_data = self.compress_json(changes)
-        return self.send(compressed_data)
-
-# 2. Sistema de logging mejorado
-import logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('rummy_game.log'),
-        logging.StreamHandler()
-    ]
-)
-
-# 3. Configuración externa
-import configparser
-config = configparser.ConfigParser()
-config.read('game_config.ini')
-
-# 4. Tests unitarios
-import unittest
-class TestGameLogic(unittest.TestCase):
-    def test_trio_formation(self):
-        player = player(0, "Test")
-        # Añadir cartas de prueba
-        assert player._has_trio() == True
-
-# 5. Persistencia de partidas
-import pickle
-def save_game_state(game, filename):
-    with open(filename, 'wb') as f:
-        pickle.dump(game.to_dict(), f)
-
-def load_game_state(filename):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)

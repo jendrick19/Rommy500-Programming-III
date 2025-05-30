@@ -11,7 +11,11 @@ def main():
     pygame.init()
     pygame.display.set_caption("Rummy 500")
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    icon = pygame.image.load("balatro.jpg")
+    icon = pygame.transform.smoothscale(icon, (130, 165))
     clock = pygame.time.Clock()
+    last_broadcast= time.time()
+    broadcast_interval = 2  # Intervalo de broadcast en segundos
     
     # Pantalla inicial para elegir entre host o unirse
     network_mode = None
@@ -81,17 +85,19 @@ def main():
             # Dibujar título
             title_font = pygame.font.SysFont(None, 48)
             title_text = title_font.render("Rummy 500", True, TEXT_COLOR)
-            screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 100))
+            screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 50))
             
+            icon_rect = icon.get_rect(center=(SCREEN_WIDTH // 2, 170))
+            screen.blit(icon, icon_rect)
             # Dibujar botones
             font = pygame.font.SysFont(None, 32)
             host_text = font.render("Crear partida", True, TEXT_COLOR)
             join_text = font.render("Unirse a partida", True, TEXT_COLOR)
             rules_text = font.render("Reglas", True, TEXT_COLOR)
             
-            host_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 100, 200, 50)
-            join_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 30, 200, 50)
-            rules_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 60, 200, 50)
+            host_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 90, 200, 50)
+            join_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 20, 200, 50)
+            rules_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 70, 200, 50)
             
             pygame.draw.rect(screen, BUTTON_COLOR, host_rect, border_radius=5)
             pygame.draw.rect(screen, BUTTON_COLOR, join_rect, border_radius=5)
@@ -304,8 +310,18 @@ def main():
     
     # Bucle principal del juego
     running = True
+    showing_round_scores = False
+    last_game_state = None
+
     while running and network.connected:
-        for event in pygame.event.get():
+        # Enviar el estado periódicamente SOLO si eres host
+        if network.is_host() and (time.time() - last_broadcast > broadcast_interval):
+            print(f"[HOST] Enviando estado a clientes. Ronda: {game.round_num}, Jugador actual: {game.current_player_idx}, Estado: {game.state}")
+            network.send_game_state(game.to_dict())
+            last_broadcast = time.time()
+        # Procesar todos los eventos una sola vez
+        events = pygame.event.get()
+        for event in events:
             if event.type == pygame.QUIT:
                running = False
 
@@ -322,8 +338,10 @@ def main():
                     # ✔ Jugador en turno puede hacer acciones normales
                     elif not game.initial_discard_offer and game.current_player_idx == game.player_id:
                       ui.handle_click(event.pos, game)# Solo el host puede iniciar la siguiente ronda
-                    if network.is_host():
                     # Envía el resumen de puntuación a los clientes antes de iniciar la nueva rondas
+                    # Solo el host puede iniciar la siguiente ronda
+                    if network.is_host():
+                        # Envía el resumen de puntuación a los clientes antes de iniciar la nueva rondas
                         print("[HOST] Iniciando nueva ronda")
                         showing_round_scores = False
                         game.start_new_round()
@@ -337,19 +355,40 @@ def main():
             game.handle_event(event)
 
         
+
+        # Detectar cambios en el estado del juego para mostrar/ocultar pantalla de puntuación
+        if game.state != last_game_state:
+            print(f"[{('HOST' if network.is_host() else 'CLIENTE')}] Cambio de estado: {last_game_state} -> {game.state}")
+
+            if game.state == GAME_STATE_ROUND_END and not showing_round_scores:
+                print(f"[{('HOST' if network.is_host() else 'CLIENTE')}] Mostrando pantalla de puntuación")
+
+                showing_round_scores = True
+                print(f"Mostrando pantalla de puntuación. Host: {network.is_host()}")
+
+            elif game.state == GAME_STATE_PLAYING and showing_round_scores:
+                print(f"[{('HOST' if network.is_host() else 'CLIENTE')}] Mostrando pantalla de puntuación")
+                showing_round_scores = False
+                print("Ocultando pantalla de puntuación, nueva ronda iniciada")
+                if network.is_host():
+                   network.send_game_state(game.to_dict())  # Enviar estado actualizado a clientes
+            last_game_state = game.state
+                
+
+
         # Actualizar estado del juego
         game.update()
-        
+        if not network.is_host():
+            print(f"[CLIENTE] Estado local tras update: ronda={game.round_num}, jugador={game.current_player_idx}, estado={game.state}")
         # Renderizar
         screen.fill(BG_COLOR)
         ui.draw(game)
         pygame.display.flip()
-        
-        
         clock.tick(FPS)
     
     # Si se desconectó, mostrar mensaje
     if not network.connected:
+        print(f"[{('HOST' if network.is_host() else 'CLIENTE')}] Desconectado del servidor")
         font = pygame.font.SysFont(None, 32)
         error_text = font.render("Conexión perdida. Volviendo al menú principal...", True, (255, 0, 0))
         screen.fill(BG_COLOR)

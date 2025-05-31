@@ -9,7 +9,7 @@ class UI:
         self.title_font = pygame.font.SysFont(None, 36)
         self.card_font = card_font or pygame.font.SysFont(None, 32)
         self.info_font = pygame.font.SysFont("dejavusans", 24, bold=True)
-        self.selected_card = None
+        self.selected_cards: set[int] = set()
         self.selected_combination = None
         self.selected_player = None
         self.action_buttons = []
@@ -47,7 +47,7 @@ class UI:
     
         # Si la ronda terminó, mostrar tabla de puntuaciones y botón
         if game.state == GAME_STATE_ROUND_END:
-            self.draw_score_table(game)
+            self.draw_round_scores(game)
             return
     
     def draw_deck(self, game, x, y):
@@ -176,96 +176,93 @@ class UI:
                 self.draw_mini_card(card, mini_x, mini_y)
     
     def draw_player_hand(self, game):
-        """Dibuja la mano del jugador local"""
         # Verificar que el ID del jugador es válido
-        if game.player_id < 0 or game.player_id >= len(game.players):
-            error_text = self.title_font.render(f"Error: ID de jugador no válido ({game.player_id})", True, (255, 0, 0))
-            self.screen.blit((error_text, (20, SCREEN_HEIGHT - 180)), True, (255, 0, 0))
-            self.screen.blit(error_text, (20, SCREEN_HEIGHT - 180))
-            return
-            
-        player = game.players[game.player_id]
-        
-        # Dibujar información del jugador
-        base_y = SCREEN_HEIGHT - 280
+            if game.player_id < 0 or game.player_id >= len(game.players):
+                error_text = self.title_font.render(
+                    f"Error: ID de jugador no válido ({game.player_id})", True, (255, 0, 0)
+                )
+                self.screen.blit(error_text, (20, SCREEN_HEIGHT - 180))
+                return
 
-        player_text = f"Tu mano (Jugador {game.player_id + 1})" + (" (Mano)" if player.is_mano else "")
-        player_surface = self.title_font.render(player_text, True, PLAYER_COLORS[game.player_id % len(PLAYER_COLORS)])
-        self.screen.blit(player_surface, (20, base_y))
-        
-        score_text = f"Puntos: {player.score}"
-        score_surface = self.font.render(score_text, True, TEXT_COLOR)
-        self.screen.blit(score_surface, (20, base_y + 30))
-        
-        status_text = "Bajado" if player.has_laid_down else "No bajado"
-        status_surface = self.font.render(status_text, True, TEXT_COLOR)
-        self.screen.blit(status_surface, (150, base_y + 30))
+            player = game.players[game.player_id]
 
-        # Mostrar trío(s) y seguidilla(s) detectados
-        trios = player.detect_trios()
-        seguidillas = player.detect_seguidillas()
+            # ───----- Información del jugador -----───
+            base_y = SCREEN_HEIGHT - 280
+            player_text = f"Tu mano (Jugador {game.player_id + 1})" + (" (Mano)" if player.is_mano else "")
+            player_surface = self.title_font.render(
+                player_text, True, PLAYER_COLORS[game.player_id % len(PLAYER_COLORS)]
+            )
+            self.screen.blit(player_surface, (20, base_y))
 
-        # Calcular posición derecha de los mensajes
-        # Fuente decorativa más grande y en negrita
-        info_font = pygame.font.SysFont("dejavusans", 28, bold=True)
+            score_surface = self.font.render(f"Puntos: {player.score}", True, TEXT_COLOR)
+            self.screen.blit(score_surface, (20, base_y + 30))
 
-        info_x = SCREEN_WIDTH - 240  # Más hacia el borde derecho
-        info_y = base_y - 25  # CAMBIO: Subir 30 píxeles (era base_y + 5)
+            status_surface = self.font.render(
+                "Bajado" if player.has_laid_down else "No bajado", True, TEXT_COLOR
+            )
+            self.screen.blit(status_surface, (150, base_y + 30))
 
-        if trios:
-            trio_text = info_font.render(f"🃏 Tríos: {len(trios)}", True, (30, 144, 255))  # Azul brillante
-            self.screen.blit(trio_text, (info_x, info_y))
+            # ───----- Indicadores de tríos / seguidillas -----───
+            trios = player.detect_trios()
+            seguidillas = player.detect_seguidillas()
 
-        if seguidillas:
-            seq_text = info_font.render(f"♠ Seguidillas: {len(seguidillas)}", True, (50, 205, 50))  # Verde lima
-            # CAMBIO: Mover seguidilla más a la izquierda (restar 50 píxeles)
-            self.screen.blit(seq_text, (info_x - 50, info_y + 35))
+            info_font = pygame.font.SysFont("dejavusans", 28, bold=True)
+            info_x = SCREEN_WIDTH - 240
+            info_y = base_y - 25
 
-        # Dibujar cartas de la mano
-        hand_x = 20
-        hand_y = base_y + 60
-        card_spacing = min(CARD_SPACING, (SCREEN_WIDTH - 40) / max(1, len(player.hand)) - CARD_WIDTH)
+            if trios:
+                trio_text = info_font.render(f"🃏 Tríos: {len(trios)}", True, (30, 144, 255))
+                self.screen.blit(trio_text, (info_x, info_y))
 
-        # Obtener cartas que están en tríos o seguidillas
-        trios = player.detect_trios()
-        seguidillas = player.detect_seguidillas()
+            if seguidillas:
+                seq_text = info_font.render(f"♠ Seguidillas: {len(seguidillas)}", True, (50, 205, 50))
+                self.screen.blit(seq_text, (info_x - 50, info_y + 35))
 
-        # Aplanar las listas de combinaciones en una sola lista de cartas
-        cards_in_combos = set()
-        for combo in trios + seguidillas:
-            cards_in_combos.update(combo)
+            # ───----- Cartas de la mano -----───
+            hand_x = 20
+            hand_y = base_y + 60
+            card_spacing = min(CARD_SPACING, (SCREEN_WIDTH - 40) / max(1, len(player.hand)) - CARD_WIDTH)
 
-        
-        for i, card in enumerate(player.hand):
-            card_x = hand_x + i * (CARD_WIDTH + card_spacing)
-            card_y = hand_y
-            # Si está seleccionada, subirla
-            if i == self.selected_card:
-                card_y -= 20  # Sube la carta 20 píxeles
-                pygame.draw.rect(self.screen, (255, 255, 0), 
-                                (card_x - 5, card_y - 5, CARD_WIDTH + 10, CARD_HEIGHT + 10), 3, border_radius=5)
-            # Resaltar en azul si está en un trío o seguidilla
-            if card in cards_in_combos:
-                pygame.draw.rect(self.screen, (0, 100, 255),  # Azul
-                    (card_x - 3, card_y - 3, CARD_WIDTH + 6, CARD_HEIGHT + 6), 3, border_radius=5)
+            # Cartas que ya forman parte de tríos / seguidillas detectados (solo para resaltar)
+            cards_in_combos = set(c for combo in (trios + seguidillas) for c in combo)
 
-            self.draw_card(card, card_x, card_y)
-            # Dibujar combinaciones bajadas propias
-        if player.has_laid_down and player.combinations:
-            label_font = pygame.font.SysFont("dejavusans", 20, bold=True)
-            label = label_font.render("Cartas bajadas:", True, TEXT_COLOR)
-            self.screen.blit(label, (20, hand_y + CARD_HEIGHT + 20))
+            for i, card in enumerate(player.hand):
+                card_x = hand_x + i * (CARD_WIDTH + card_spacing)
+                card_y = hand_y
 
-            combo_y = hand_y + CARD_HEIGHT + 50
-            for combo in player.combinations:
-                combo_text = f"{combo['type'].capitalize()}:"
-                combo_label = self.font.render(combo_text, True, TEXT_COLOR)
-                self.screen.blit(combo_label, (30, combo_y))
+                # Si está seleccionada, subirla y enmarcarla
+                if i in self.selected_cards:
+                    card_y -= 20  # Sube la carta
+                    pygame.draw.rect(
+                        self.screen, (255, 255, 0),
+                        (card_x - 5, card_y - 5, CARD_WIDTH + 10, CARD_HEIGHT + 10),
+                        3, border_radius=5
+                    )
 
-                for j, card in enumerate(combo['cards']):
-                    self.draw_mini_card(card, 110 + j * 20, combo_y)
-                combo_y += 30
+                # Si pertenece a un trío / seguidilla detectada, marco azul
+                if card in cards_in_combos:
+                    pygame.draw.rect(
+                        self.screen, (0, 100, 255),
+                        (card_x - 3, card_y - 3, CARD_WIDTH + 6, CARD_HEIGHT + 6),
+                        3, border_radius=5
+                    )
 
+                self.draw_card(card, card_x, card_y)
+
+            # ───----- Combinaciones propias ya bajadas -----───
+            if player.has_laid_down and player.combinations:
+                label_font = pygame.font.SysFont("dejavusans", 20, bold=True)
+                self.screen.blit(label_font.render("Cartas bajadas:", True, TEXT_COLOR),
+                                (20, hand_y + CARD_HEIGHT + 20))
+
+                combo_y = hand_y + CARD_HEIGHT + 50
+                for combo in player.combinations:
+                    combo_label = self.font.render(f"{combo['type'].capitalize()}:", True, TEXT_COLOR)
+                    self.screen.blit(combo_label, (30, combo_y))
+
+                    for j, c in enumerate(combo['cards']):
+                        self.draw_mini_card(c, 110 + j * 20, combo_y)
+                    combo_y += 30
 
     def draw_local_player_combinations(self, player, base_y):
         """Dibuja las combinaciones bajadas del jugador local debajo de su mano"""
@@ -369,76 +366,82 @@ class UI:
                                     y + mini_height // 2 - mini_text.get_height() // 2))
     
     def draw_action_buttons(self, game):
-        """Dibuja los botones de acción"""
         self.action_buttons = []
-        
+
         # Verificar que el ID del jugador es válido
         if game.player_id < 0 or game.player_id >= len(game.players):
             return
-            
-        # Solo mostrar botones si es el turno del jugador local
+
+    # Solo mostrar botones si es el turno del jugador local
         if game.current_player_idx != game.player_id:
             return
-        
+
         player = game.players[game.player_id]
         button_width = 150
         button_height = 40
         button_spacing = 10
         start_x = SCREEN_WIDTH - button_width - 20
         start_y = 20
-        
+
         # Botón para tomar del mazo
         if not player.took_discard and not player.took_penalty:
             draw_deck_rect = pygame.Rect(start_x, start_y, button_width, button_height)
             pygame.draw.rect(self.screen, BUTTON_COLOR, draw_deck_rect, border_radius=5)
             draw_deck_text = self.font.render("Tomar del mazo", True, TEXT_COLOR)
-            self.screen.blit(draw_deck_text, (draw_deck_rect.centerx - draw_deck_text.get_width() // 2, 
-                                            draw_deck_rect.centery - draw_deck_text.get_height() // 2))
+            self.screen.blit(draw_deck_text, (draw_deck_rect.centerx - draw_deck_text.get_width() // 2,
+                                          draw_deck_rect.centery - draw_deck_text.get_height() // 2))
             self.action_buttons.append(("draw_deck", draw_deck_rect))
-            
+
             # Botón para tomar del descarte
             draw_discard_rect = pygame.Rect(start_x, start_y + button_height + button_spacing, button_width, button_height)
             pygame.draw.rect(self.screen, BUTTON_COLOR, draw_discard_rect, border_radius=5)
             draw_discard_text = self.font.render("Tomar del descarte", True, TEXT_COLOR)
-            self.screen.blit(draw_discard_text, (draw_discard_rect.centerx - draw_discard_text.get_width() // 2, 
-                                                draw_discard_rect.centery - draw_discard_text.get_height() // 2))
+            self.screen.blit(draw_discard_text, (draw_discard_rect.centerx - draw_discard_text.get_width() // 2,
+                                             draw_discard_rect.centery - draw_discard_text.get_height() // 2))
             self.action_buttons.append(("draw_discard", draw_discard_rect))
-        
-        # Botón para bajarse
-        show_lay_down = False
-        if (player.took_discard or player.took_penalty):
-            if game.round_num == 0:
-                # En ronda 1, permitir bajarse si puede (aunque ya haya bajado una vez)
-                if player.can_lay_down(game.round_num):
-                    show_lay_down = True
-            else:
-                # En otras rondas, solo si no se ha bajado aún
-                if not player.has_laid_down and player.can_lay_down(game.round_num):
-                    show_lay_down = True
+
+        # Botón para bajarse (solo si la selección es válida)
+        show_lay_down = (
+            (player.took_discard or player.took_penalty)
+            and self._selection_is_valid(player)
+            and (
+                (game.round_num == 0 and player.can_lay_down(game.round_num))
+                or (game.round_num > 0 and not player.has_laid_down and player.can_lay_down(game.round_num))
+            )
+        )
 
         if show_lay_down:
             lay_down_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 2, button_width, button_height)
             pygame.draw.rect(self.screen, BUTTON_COLOR, lay_down_rect, border_radius=5)
             lay_down_text = self.font.render("Bajarse", True, TEXT_COLOR)
-            self.screen.blit(lay_down_text, (lay_down_rect.centerx - lay_down_text.get_width() // 2, 
-                                            lay_down_rect.centery - lay_down_text.get_height() // 2))
+            self.screen.blit(lay_down_text, (lay_down_rect.centerx - lay_down_text.get_width() // 2,
+                                         lay_down_rect.centery - lay_down_text.get_height() // 2))
             self.action_buttons.append(("lay_down", lay_down_rect))
-        
-        # Botón para descartar
-        if (player.took_discard or player.took_penalty) and self.selected_card is not None:
+
+        # Botón para descartar (si la selección NO es válida)
+        if (
+            (player.took_discard or player.took_penalty)
+            and self.selected_cards
+            and not self._selection_is_valid(player)
+        ):
             discard_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
             pygame.draw.rect(self.screen, BUTTON_COLOR, discard_rect, border_radius=5)
             discard_text = self.font.render("Descartar", True, TEXT_COLOR)
-            self.screen.blit(discard_text, (discard_rect.centerx - discard_text.get_width() // 2, 
-                                            discard_rect.centery - discard_text.get_height() // 2))
+            self.screen.blit(discard_text, (discard_rect.centerx - discard_text.get_width() // 2,
+                                        discard_rect.centery - discard_text.get_height() // 2))
             self.action_buttons.append(("discard", discard_rect))
-        # Botón para añadir a combinación
-        if (player.took_discard or player.took_penalty) and self.selected_card is not None and self.selected_combination is not None:
+
+        # Botón para añadir a una combinación existente
+        if (player.took_discard or player.took_penalty) and self.selected_cards and self.selected_combination is not None:
             add_to_combination_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 4, button_width, button_height)
             pygame.draw.rect(self.screen, BUTTON_COLOR, add_to_combination_rect, border_radius=5)
             add_to_combination_text = self.font.render("Añadir a la combinación", True, TEXT_COLOR)
-            self.screen.blit(add_to_combination_text, (add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
-    
+            self.screen.blit(add_to_combination_text, (
+                add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,
+                add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
+            self.action_buttons.append(("add_to_combo", add_to_combination_rect))
+
+
     def draw_status_message(self, game):
         """Dibuja un mensaje de estado"""
         message = ""
@@ -464,7 +467,6 @@ class UI:
 
     
     def handle_click(self, pos, game):
-        """Maneja los clics del ratón"""
         # Verificar si se hizo clic en un botón de acción
         for action, rect in self.action_buttons:
             if rect.collidepoint(pos):
@@ -487,10 +489,11 @@ class UI:
             card_y = hand_y
             card_rect = pygame.Rect(card_x, card_y, CARD_WIDTH, CARD_HEIGHT)
             if card_rect.collidepoint(pos):
-                self.selected_card = i
-                # Si ya hay una combinación seleccionada, intentar añadir la carta
-                if self.selected_combination is not None and self.selected_player is not None:
-                    self.handle_action("add_to_combo", game)
+                # Permite seleccionar/deseleccionar múltiples cartas
+                if i in self.selected_cards:
+                    self.selected_cards.remove(i)
+                else:
+                    self.selected_cards.add(i)
                 return
 
         # Selección de combinaciones de cualquier jugador
@@ -500,69 +503,19 @@ class UI:
                 if combo_rect.collidepoint(pos):
                     self.selected_combination = cidx
                     self.selected_player = pid
-                    if self.selected_card is not None:
+                    # Añadir carta seleccionada a la combinación
+                    if self.selected_cards:
+                        # Tomar una sola carta si hay múltiples seleccionadas
+                        index = sorted(self.selected_cards)[0]
+                        self.selected_card = index
                         self.handle_action("add_to_combo", game)
+                        self.selected_cards.clear()
                     return
 
         # Si no se hizo clic en nada relevante, limpiar selección
-        self.selected_card = None
+        self.selected_cards.clear()
         self.selected_combination = None
         self.selected_player = None
-
-    def handle_action(self, action, game):
-        if action == "draw_deck":
-            game.take_card_from_deck()
-            game.update()
-        elif action == "draw_discard":
-            game.take_card_from_discard()
-            game.update()
-        elif action == "lay_down":
-            game.lay_down_combination()
-            game.update()
-        elif action == "discard" and self.selected_card is not None:
-            game.discard_card(self.selected_card)
-            self.selected_card = None
-            game.update()
-        elif action == "next_round":
-            if game.network.is_host():
-                game.start_new_round()
-                game.update()
-        elif action == "add_to_combo" and self.selected_card is not None and self.selected_combination is not None and self.selected_player is not None:
-            # Permitir añadir a cualquier combinación bajada (propia o de otro jugador)
-            game.add_to_combination(
-                self.selected_card,
-                self.selected_combination,
-                self.selected_player
-            )
-            # No limpiar self.selected_combination ni self.selected_player,
-            # solo limpiar la carta seleccionada para permitir añadir varias seguidas
-            self.selected_card = None
-        game.update()
-
-    def draw_score_table(self, game):
-        # Fondo semitransparente
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.set_alpha(220)
-        overlay.fill((30, 30, 30))
-        self.screen.blit(overlay, (0, 0))
-
-        title = self.title_font.render("Fin de la ronda", True, (255, 255, 0))
-        self.screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 100))
-
-        # Tabla de puntuaciones
-        font = pygame.font.SysFont(None, 36)
-        y = 180
-        for player in sorted(game.players, key=lambda p: -p.score):
-            text = font.render(f"{player.name}: {player.score} puntos", True, (255, 255, 255))
-            self.screen.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, y))
-            y += 50
-
-        # Botón para continuar
-        button_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, y + 40, 200, 50)
-        pygame.draw.rect(self.screen, BUTTON_COLOR, button_rect, border_radius=8)
-        btn_text = font.render("Siguiente ronda", True, (255, 255, 255))
-        self.screen.blit(btn_text, (button_rect.centerx - btn_text.get_width() // 2, button_rect.centery - btn_text.get_height() // 2))
-        self.action_buttons = [("next_round", button_rect)]
 
     def animate_deal(self, game):
         """Animación de reparto de cartas a todos los jugadores antes de que aparezcan en la mano"""
@@ -684,10 +637,11 @@ class UI:
         # Fallback
         return pygame.Rect(100 + pid * 200, 150 + cidx * 30, 120, 25)
 
-    def draw_round_scores(self, game):
+    def draw_round_scores(self, game, is_host=False):
         self.screen.fill(BG_COLOR)
-        title = self.font.render("Fin de la ronda", True, (255, 255, 0))
+        title = self.title_font.render("Fin de la ronda", True, (255, 255, 0))
         self.screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 80))
+        
         y = 160
         for idx, player in enumerate(game.players):
             name = getattr(player, "name", f"Jugador {idx+1}")
@@ -695,10 +649,53 @@ class UI:
             text = self.font.render(f"{name}: {score} puntos", True, TEXT_COLOR)
             self.screen.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, y))
             y += 40
+        
         # Mostrar ganador solo si existe
         if hasattr(game, "round_winner") and game.round_winner is not None and 0 <= game.round_winner < len(game.players):
             winner_name = getattr(game.players[game.round_winner], "name", f"Jugador {game.round_winner+1}")
             winner_text = self.font.render(f"Ganador de la ronda: {winner_name}", True, (0, 255, 0))
             self.screen.blit(winner_text, (SCREEN_WIDTH // 2 - winner_text.get_width() // 2, y + 20))
-        continue_text = self.font.render("Haz clic para continuar...", True, (200, 200, 200))
-        self.screen.blit(continue_text, (SCREEN_WIDTH // 2 - continue_text.get_width() // 2, y + 70))
+        if is_host:
+            # Botón para iniciar la siguiente ronda
+            next_button_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, y + 80, 200, 50)
+            pygame.draw.rect(self.screen, BUTTON_COLOR, next_button_rect, border_radius=8)
+            btn_text = self.font.render("Siguiente ronda", True, (255, 255, 255))
+            self.screen.blit(btn_text, (next_button_rect.centerx - btn_text.get_width() // 2, next_button_rect.centery - btn_text.get_height() // 2))
+            self.action_buttons = [("next_round", next_button_rect)]
+        else:
+            next_button_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, y + 80, 200, 50)
+            pygame.draw.rect(self.screen, DISABLED_BUTTON_COLOR, next_button_rect, border_radius=8)
+            btn_text = self.font.render("Siguiente ronda", True, (255, 255, 255))
+            self.screen.blit(btn_text, (next_button_rect.centerx - btn_text.get_width() // 2, next_button_rect.centery - btn_text.get_height() // 2))
+            self.action_buttons = [("next_round", next_button_rect)]
+        pygame.display.flip()
+        
+    def handle_action(self, action, game):
+        if action == "draw_deck":
+            game.take_card_from_deck()
+        elif action == "draw_discard":
+            game.take_card_from_discard()
+        elif action == "lay_down":
+            if self.selected_cards:
+                game.lay_down_selected(sorted(self.selected_cards))
+                self.selected_cards.clear()
+        elif action == "discard" and self.selected_cards:
+            index = sorted(self.selected_cards)[0]
+            game.discard_card(index)
+            self.selected_cards.clear()
+        elif action == "next_round" and game.network.is_host():
+            game.start_new_round()
+        elif (action == "add_to_combo" and
+              self.selected_cards and
+              self.selected_combination is not None and
+              self.selected_player is not None):
+            index = sorted(self.selected_cards)[0]
+            game.add_to_combination(index, self.selected_combination, self.selected_player)
+            self.selected_cards.clear()
+        game.update()
+    
+    def _selection_is_valid(self, player):
+        if len(self.selected_cards) < 3:
+            return False
+        cards = [player.hand[i] for i in self.selected_cards]
+        return player.is_trio(cards) or player.is_sequence(cards)

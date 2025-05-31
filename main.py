@@ -329,16 +329,7 @@ def main():
             if showing_round_scores:
                 ui.draw_round_scores(game, is_host=network.is_host())
                 if event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN:
-                    if game.initial_discard_offer and game.discard_offered_to != game.player_id:
-                        continue  # No puedes interactuar
-                    # ✔ Jugador actual puede aceptar/rechazar la carta del descarte
-                    if game.initial_discard_offer and game.discard_offered_to == game.player_id:
-                        ui.handle_click(event.pos, game)
-
-                    # ✔ Jugador en turno puede hacer acciones normales
-                    elif not game.initial_discard_offer and game.current_player_idx == game.player_id:
-                      ui.handle_click(event.pos, game)# Solo el host puede iniciar la siguiente ronda
-                    # Envía el resumen de puntuación a los clientes antes de iniciar la nueva rondas
+                    ui.handle_click(event.pos, game)
                     # Solo el host puede iniciar la siguiente ronda
                     if network.is_host():
                         # Envía el resumen de puntuación a los clientes antes de iniciar la nueva rondas
@@ -378,8 +369,6 @@ def main():
 
         # Actualizar estado del juego
         game.update()
-        if not network.is_host():
-            print(f"[CLIENTE] Estado local tras update: ronda={game.round_num}, jugador={game.current_player_idx}, estado={game.state}")
         # Renderizar
         screen.fill(BG_COLOR)
         ui.draw(game)

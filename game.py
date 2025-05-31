@@ -24,11 +24,9 @@ class Game:
         self.round_scores = [0 for _ in range(13)]  # Máximo 13 jugadores
         self.round_winner = None
         self.rejected_discard = []             # Jugadores que rechazaron la carta del descarte inicial
-        self.initial_discard_offer = True      # Bandera de si estamos en la fase de oferta de descarte
-        self.discard_offered_to = self.player_id           # Jugador al que se le ofrece actualmente
-        self.discard_origin_player = 0  
-        self.reject_rect = None
-        self.take_penalty_rect = None
+        self.discard_offer = False     # Inicialmente no hay oferta de descarte
+        self.discard_offered_to = -1           # Nadie tiene la oferta inicialmente
+        self.discard_origin_player = -1        # No hay jugador origen inicialmente
         
         # Inicializar el juego si somos el host
         if network.is_host():
@@ -137,6 +135,10 @@ class Game:
         self.discard_pile = DiscardPile()
         self.sequences_laid_down = 0
         self.trios_laid_down = 0
+        self.discard_offer = False  # No iniciar oferta automáticamente
+        self.rejected_discard = []
+        self.discard_offered_to = self.current_player_idx  # El jugador actual es el primero en decidir
+        self.discard_origin_player = self.current_player_idx  # El jugador actual es el origen
         
         # Reiniciar los jugadores
         for player in self.players:
@@ -204,10 +206,14 @@ class Game:
         player.add_to_hand(card)
         player.took_penalty = True  # Marcar que el jugador tomó una carta
         
+        # Terminar la fase de oferta si estaba activa
+        self.discard_offer = False
+        self.discard_offered_to = -1
+        self.discard_origin_player = -1
+        
         # Enviar el estado actualizado
         if self.network.is_host():
-            accion = "take_card_from_deck"
-            print(f"[HOST] Acción: {accion}, Estado antes de enviar: ronda={self.round_num}, jugador={self.current_player_idx}, estado={self.state}")
+            print(f"[HOST] Jugador {self.current_player_idx} tomó del mazo")
             self.network.send_game_state(self.to_dict())
         else:
             self.network.send_action({
@@ -218,89 +224,132 @@ class Game:
         return True
     
     def take_card_from_discard(self, is_penalty=False):
-        #El jugador actual toma una carta del descarte
+        print(f"[DEBUG] take_card_from_discard llamado con is_penalty={is_penalty}")
         if self.state != GAME_STATE_PLAYING:
             return False
-           # ¿Estamos en la fase de oferta de descarte?
-        if self.initial_discard_offer:
+
+        # Determinar el jugador que toma la carta
+        if self.discard_offer:
             player = self.players[self.discard_offered_to]
         else:
             player = self.players[self.current_player_idx]
 
         # Verificar si el jugador ya tomó una carta
         if player.took_discard or player.took_penalty:
+            print("[DEBUG] El jugador ya tomó una carta este turno.")
             return False
-        
-        # Verificar si hay cartas en el descarte
-        if len(self.discard_pile.cards) == 0:
-            return False
-        
+
         # Tomar la carta superior del descarte
         card = self.discard_pile.take()
-        if not card:
-                return False
-
-        if self.network.is_host():
+        if card:
             player.hand.append(card)
-            if self.initial_discard_offer:
-                if is_penalty and self.discard_offered_to != self.discard_origin_player:
-                    # Penalización: toma carta extra del mazo
-                    penalty_card = self.deck.deal()
-                    if penalty_card:
-                        player.hand.append(penalty_card)
-                # Termina la fase de oferta
-                self.initial_discard_offer = False
-                self.rejected_discard = []
-                self.discard_offered_to = 0
-            # Flags de turno
+            print(f"[DEBUG] {player} tomó la carta del descarte: {card}")
+        else:
+            print("[DEBUG] No hay carta en el descarte para tomar.")
+            return False
+
+        if self.discard_offer:
             if is_penalty:
+                # Penalización: toma carta extra del mazo
+                penalty_card = self.deck.deal()
+                if penalty_card:
+                    player.hand.append(penalty_card)
+                    print(f"[DEBUG] {player} tomó carta de penalización del mazo: {penalty_card}")
                 player.took_penalty = True
+                player.took_discard = False
             else:
                 player.took_discard = True
+                player.took_penalty = False
 
-            # Enviar el estado actualizado
-            accion = "take_card_from_discard"
-            print(f"[HOST] Acción: {accion}, Estado antes de enviar: ronda={self.round_num}, jugador={self.current_player_idx}, estado={self.state}")
+            # Terminar la fase de oferta
+            self.discard_offer = False
+            self.rejected_discard = []
+            self.discard_offered_to = -1
+            self.discard_origin_player = -1
+
+            # Si tomó con penalización y no era el mano, darle el turno
+            if is_penalty and self.current_player_idx != self.players.index(player):
+                self.current_player_idx = self.players.index(player)
+                for p in self.players:
+                    p.is_mano = False
+                player.is_mano = True
+        else:
+            player.took_discard = True
+            player.took_penalty = False
+
+        # Enviar el estado actualizado
+        if self.network.is_host():
+            print(f"[HOST] Jugador {self.current_player_idx} tomó del descarte{' (con penalización)' if is_penalty else ''}")
             self.network.send_game_state(self.to_dict())
         else:
-            # Cliente: solo envía la acción
+            # Cliente: envía la acción
             self.network.send_action({
-                'type': ACTION_DRAW_DISCARD,
+                'type': ACTION_DRAW_DISCARD if not is_penalty else 'take_discard_penalty',
                 'player_id': self.player_id,
                 'is_penalty': is_penalty
             })
+            print(f"[CLIENTE] Jugador {self.player_id} tomó del descarte{' (con penalización)' if is_penalty else ''}")
         return True
+    
     def reject_discard_offer(self):
         """El jugador actual rechaza la carta del descarte inicial."""
-
+        # Si es cliente, enviar la acción al host
         if not self.network.is_host():
+            print(f"[CLIENTE] Jugador {self.player_id} envía acción de rechazo")
             self.network.send_action({
                 'type': 'reject_discard',
                 'player_id': self.player_id
             })
             return
-        self.rejected_discard.append(self.discard_offered_to)
 
-        print(f"[HOST] Jugador {self.discard_offered_to} rechazó el descarte.")
-        print(f"[HOST] Rechazaron: {self.rejected_discard}")
+        print(f"[HOST] Procesando rechazo directo del jugador {self.player_id}")
+        # Si es el jugador MANO iniciando la oferta
+        if self.current_player_idx == self.player_id and not self.discard_offer:
+            print(f"[HOST] Iniciando fase de oferta desde jugador MANO")
+            self.discard_offer = True
+            self.rejected_discard = [self.player_id]
+            self.discard_origin_player = self.player_id
+            self.discard_offered_to = (self.player_id + 1) % len(self.players)
+            self.players[self.discard_offered_to].took_discard = False
+            self.players[self.discard_offered_to].took_penalty = False
+            if self.network.is_host():
+                print(f"[HOST] Ofreciendo carta al jugador {self.discard_offered_to}")
+                self.network.send_game_state(self.to_dict())
+            return
 
-    # Buscar siguiente jugador que no haya rechazado
-        next_player = (self.discard_offered_to + 1) % len(self.players)
-        while next_player in self.rejected_discard and next_player != self.discard_origin_player:
-            next_player = (next_player + 1) % len(self.players)
+        # Si es otro jugador rechazando durante la oferta
+        if self.discard_offer and self.discard_offered_to == self.player_id:
+            print(f"[HOST] Jugador {self.player_id} rechaza durante la oferta")
+            if self.player_id not in self.rejected_discard:
+                self.rejected_discard.append(self.player_id)
+                print(f"[HOST] Rechazaron: {self.rejected_discard}")
 
-        if next_player == self.discard_origin_player:
-           print("[HOST] Todos rechazaron la carta. Terminando fase de oferta.")
-           self.initial_discard_offer = False
-           self.rejected_discard = []
-           self.discard_offered_to = 0
-        else:
-           print(f"[HOST] Ahora se ofrece al jugador {next_player}")
-           self.discard_offered_to = next_player
+            # Buscar siguiente jugador elegible
+            next_player = (self.player_id + 1) % len(self.players)
+            original_next = next_player
+            while next_player in self.rejected_discard or next_player == self.discard_origin_player:
+                next_player = (next_player + 1) % len(self.players)
+                if next_player == original_next:  # Si hemos dado la vuelta completa
+                    break
 
-        if self.network.is_host():
-           self.network.send_game_state(self.to_dict())
-
+            # Si volvimos al jugador origen o todos rechazaron
+            if next_player == self.discard_origin_player or len(self.rejected_discard) >= len(self.players) - 1:
+                print("[HOST] Todos rechazaron la carta o volvimos al origen. Terminando fase de oferta.")
+                self.discard_offer = False
+                self.rejected_discard = []
+                self.discard_offered_to = self.discard_origin_player
+                if self.network.is_host():
+                    print(f"[HOST] El jugador {self.current_player_idx} debe tomar del mazo")
+                    self.network.send_game_state(self.to_dict())
+            else:
+                # Ofrecer al siguiente jugador
+                print(f"[HOST] Ahora se ofrece al jugador {next_player}")
+                self.discard_offered_to = next_player
+                # REINICIAR FLAGS DEL NUEVO JUGADOR OFRECIDO
+                self.players[next_player].took_discard = False
+                self.players[next_player].took_penalty = False
+                if self.network.is_host():
+                    self.network.send_game_state(self.to_dict())
 
     def lay_down_combination(self):
         """El jugador actual baja sus combinaciones"""
@@ -579,17 +628,22 @@ class Game:
         if self.check_round_win_condition(player):
             self.end_round(winner_idx=self.current_player_idx)
         else:
+            # Pasar al siguiente jugador e iniciar la fase de oferta
+            old_player_idx = self.current_player_idx
             self.next_player()
+            
+            # Iniciar la fase de oferta para el siguiente jugador
+            self.discard_offer = False  # No iniciar oferta automáticamente
+            self.rejected_discard = []
+            self.discard_offered_to = self.current_player_idx  # El jugador actual es el primero en decidir
+            self.discard_origin_player = self.current_player_idx  # El jugador actual es el origen
+
             if self.network.is_host():
+                print(f"[HOST] Jugador {old_player_idx} descartó. Turno del jugador {self.current_player_idx}")
                 self.network.send_game_state(self.to_dict())
 
-        
         # Enviar el estado actualizado
-        if self.network.is_host():
-            accion = "discard_card"
-            print(f"[HOST] Acción: {accion}, Estado antes de enviar: ronda={self.round_num}, jugador={self.current_player_idx}, estado={self.state}")
-            self.network.send_game_state(self.to_dict())
-        else:
+        if not self.network.is_host():
             self.network.send_action({
                 'type': ACTION_DISCARD,
                 'player_id': self.player_id,
@@ -613,10 +667,12 @@ class Game:
         player = self.players[self.current_player_idx]
         player.took_discard = False
         player.took_penalty = False
-        self.initial_discard_offer = True
+        
+        # Iniciar fase de oferta de descarte
+        self.discard_offer = False  # No iniciar oferta automáticamente
         self.rejected_discard = []
-        self.discard_offered_to = self.current_player_idx
-        self.discard_origin_player = self.current_player_idx
+        self.discard_offered_to = self.current_player_idx  # El jugador actual es el primero en decidir
+        self.discard_origin_player = self.current_player_idx  # El jugador actual es el origen
     
     def check_round_win_condition(self, player):
         """Verifica si un jugador ha cumplido las condiciones para ganar la ronda"""
@@ -665,6 +721,10 @@ class Game:
                 'state': self.state,
                 'winner': self.winner.id if self.winner else None,
                 'eliminated_players': [player.id for player in self.eliminated_players],
+                'discard_offer': self.discard_offer,  
+                'discard_offered_to': self.discard_offered_to,  
+                'discard_origin_player': self.discard_origin_player,  
+                'rejected_discard': self.rejected_discard,  
                 'version': getattr(self, 'version', 0) + 1,  # Incrementa versión
                 'timestamp': time.time()
             }
@@ -674,8 +734,10 @@ class Game:
             return {}
     
     def update_from_dict(self, data):
+        print(f"[UI] ¿Mostrar botones? discard_offer={self.discard_offer}, "
+          f"discard_offered_to={self.discard_offered_to}, "
+          f"player_id={self.player_id}, ")
         """Actualiza el estado del juego desde un diccionario recibido por la red"""
-        print(f"[CLIENTE] Recibido estado nuevo: ronda={data.get('round_num')}, jugador={data.get('current_player_idx')}, estado={data.get('state')}")
         try:
             # Actualizar jugadores
             self.players = [Player.from_dict(player_data) for player_data in data['players']]
@@ -690,6 +752,11 @@ class Game:
             self.state = data['state']
             self.round_scores = data.get('round_scores', [0 for _ in self.players])
             self.round_winner = data.get('round_winner', None)
+            self.discard_offer = data.get('discard_offer', False)
+            self.discard_offered_to = data.get('discard_offered_to', -1)
+            self.discard_origin_player = data.get('discard_origin_player', -1)
+            self.rejected_discard = data.get('rejected_discard', [])
+            
     
             # Solo actualiza si el estado es más nuevo
             if hasattr(self, 'version') and data.get('version', 0) <= getattr(self, 'version', 0):
@@ -707,9 +774,12 @@ class Game:
         except Exception as e:
             print(f"Error al actualizar el juego desde diccionario: {e}")
             traceback.print_exc()
+        
     def handle_network_action(self, action):
         action_type = action.get('type')
         player_id = action.get('player_id')
+
+        print(f"[HOST] Recibida acción {action_type} del jugador {player_id}")
 
         if action_type == ACTION_DRAW_DECK:
             if self.current_player_idx == player_id:
@@ -718,12 +788,51 @@ class Game:
                     self.network.send_game_state(self.to_dict())
 
         elif action_type == 'reject_discard':
-            if self.current_player_idx == player_id or self.discard_offered_to == player_id:
-                self.reject_discard_offer()
+            print(f"[HOST] Procesando rechazo del jugador {player_id}")
+            # Si es el jugador MANO iniciando la oferta
+            if self.current_player_idx == player_id and not self.discard_offer:
+                print(f"[HOST] Iniciando fase de oferta desde jugador MANO")
+                self.discard_offer = True
+                self.rejected_discard = [player_id]
+                self.discard_origin_player = player_id
+                self.discard_offered_to = (player_id + 1) % len(self.players)
+                self.players[self.discard_offered_to].took_discard = False
+                self.players[self.discard_offered_to].took_penalty = False
+                print(f"[HOST] Iniciando oferta: discard_offer={self.discard_offer}, "
+                    f"rejected_discard={self.rejected_discard}, "
+                    f"discard_origin_player={self.discard_origin_player}, "
+                    f"discard_offered_to={self.discard_offered_to}")
+            # Si es otro jugador durante la oferta
+            elif self.discard_offer and self.discard_offered_to == player_id:
+                print(f"[HOST] Jugador {player_id} rechaza durante la oferta")
+                if player_id not in self.rejected_discard:
+                    self.rejected_discard.append(player_id)
+                    print(f"[HOST] Rechazaron: {self.rejected_discard}")
 
-        elif action_type == ACTION_DRAW_DISCARD:
-            if self.discard_offered_to == player_id:
-                self.take_card_from_discard(action.get('is_penalty', False))
+                # Buscar siguiente jugador elegible
+                next_player = (player_id + 1) % len(self.players)
+                original_next = next_player
+                while next_player in self.rejected_discard or next_player == self.discard_origin_player:
+                    next_player = (next_player + 1) % len(self.players)
+                    if next_player == original_next:
+                        break
+
+                # Si todos rechazaron (menos el origen) o volvimos al origen
+                if next_player == self.discard_origin_player or len(self.rejected_discard) >= len(self.players) - 1:
+                    print("[HOST] Todos rechazaron la carta o volvimos al origen. Terminando fase de oferta.")
+                    self.discard_offer = False
+                    self.rejected_discard = []
+                    self.discard_offered_to = self.discard_origin_player
+                    # Aquí el jugador origen debe tomar del mazo
+                else:
+                    print(f"[HOST] Ahora se ofrece al jugador {next_player}")
+                    self.discard_offered_to = next_player
+                    # Reiniciar flags del nuevo jugador ofrecido
+                    self.players[next_player].took_discard = False
+                    self.players[next_player].took_penalty = False
+
+                print(f"[HOST] Estado después del rechazo: oferta={self.discard_offer}, ofrecido_a={self.discard_offered_to}")
+                self.network.send_game_state(self.to_dict())
 
         elif action_type == ACTION_DRAW_DISCARD:
             if self.current_player_idx == player_id:
@@ -731,6 +840,13 @@ class Game:
                 if not self.check_and_end_round():
                     self.network.send_game_state(self.to_dict())
 
+        elif action_type == 'take_discard_penalty':
+            # Permitir que el jugador tome del descarte con penalización durante la oferta
+            if self.discard_offer and self.discard_offered_to == player_id:
+                print(f"[HOST] Jugador {player_id} toma del descarte con penalización")
+                self.take_card_from_discard(is_penalty=True)
+                if not self.check_and_end_round():
+                    self.network.send_game_state(self.to_dict())
         elif action_type == ACTION_PLAY_COMBINATION:
             if self.current_player_idx == player_id:
                 self.lay_down_combination()
@@ -746,6 +862,7 @@ class Game:
                 )
                 if not self.check_and_end_round():
                     self.network.send_game_state(self.to_dict())
+
         elif action_type == ACTION_DISCARD:
             if self.current_player_idx == player_id:
                 self.discard_card(action['card_idx'])

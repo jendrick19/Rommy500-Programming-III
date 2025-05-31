@@ -622,23 +622,51 @@ class Player:
         player.trios_laid_down = data.get('trios_laid_down', 0)
         player.has_completed_round_requirement = data.get('has_completed_round_requirement', False)
         return player
-    
+
+
     @staticmethod
     def is_trio(cards):
         if len(cards) != 3:
             return False
-        values = [c.value for c in cards if not c.is_joker]
-        return len(set(values)) == 1
+
+        non_jokers = [card for card in cards if not card.is_joker]
+
+        # No se permite trío de solo jokers
+        if not non_jokers:
+            return False
+
+        base_value = non_jokers[0].value
+        for card in non_jokers:
+            if card.value != base_value:
+                return False
+
+        return True
 
     @staticmethod
     def is_sequence(cards):
+        """Verifica si las cartas forman una seguidilla (4+ del mismo palo, consecutivas, con jokers permitidos)"""
         if len(cards) < 4:
             return False
-        suits = [c.suit for c in cards if not c.is_joker]
-        if len(set(suits)) != 1:
+
+        non_jokers = [c for c in cards if not c.is_joker]
+        jokers = [c for c in cards if c.is_joker]
+
+        if not non_jokers:
             return False
-        ordered = sorted([VALUES.index(c.value) for c in cards if not c.is_joker])
-        gaps = [(ordered[i+1] - ordered[i]) for i in range(len(ordered)-1)]
-        jokers = sum(1 for c in cards if c.is_joker)
-        needed = sum(g - 1 for g in gaps)
-        return needed <= jokers
+
+        suits = [c.suit for c in non_jokers]
+        if len(set(suits)) != 1:
+            return False  # Todos deben ser del mismo palo
+
+        suit = suits[0]
+        values = sorted(set(VALUES.index(c.value) for c in non_jokers))
+
+        needed_jokers = 0
+        for i in range(1, len(values)):
+            gap = values[i] - values[i - 1]
+            if gap == 0:
+                return False  # Carta repetida no válida
+            elif gap > 1:
+                needed_jokers += gap - 1
+
+        return needed_jokers <= len(jokers)

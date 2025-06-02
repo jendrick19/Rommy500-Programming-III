@@ -293,66 +293,40 @@ class Game:
         return True
     
     def add_to_combination(self, card_idx, combination_idx, player_idx=None):
-        """Añade una carta a una combinación existente"""
+        """Añade una carta a una combinación existente (propia o de otro jugador)"""
         if self.state != GAME_STATE_PLAYING:
             return False
-        
+
         current_player = self.players[self.current_player_idx]
-        # Si no se especifica, agregar a una combinación propia
         target_player_idx = player_idx if player_idx is not None else self.current_player_idx
         target_player = self.players[target_player_idx]
 
-        # Solo puedes agregar a combinaciones de otros si ya te bajaste
-        if target_player_idx != self.current_player_idx and not current_player.has_laid_down:
-            return False
-
-        # Validar índice de carta y combinación
+        # Validar índices
         if card_idx < 0 or card_idx >= len(current_player.hand):
             return False
-        
-        card = current_player.hand[card_idx]
-        
-        # Si no se especifica un jugador, usar el jugador actual
-        target_player_idx = player_idx if player_idx is not None else self.current_player_idx
-        target_player = self.players[target_player_idx]
-        
-        # Verificar si el índice de la combinación es válido
         if combination_idx < 0 or combination_idx >= len(target_player.combinations):
             return False
 
         card = current_player.hand[card_idx]
-        combination = target_player.combinations[combination_idx]
 
-        # Validar si la carta puede agregarse a la combinación
-        if combination["type"] == "trio":
-            if not all(card.value == c.value for c in combination["cards"]):
-                return False
-        elif combination["type"] == "sequence":
-            if not all(card.suit == c.suit for c in combination["cards"]):
-                return False
-            values = [VALUES.index(c.value) for c in combination["cards"]]
-            card_val = VALUES.index(card.value)
-            if not (card_val == min(values) - 1 or card_val == max(values) + 1):
-                return False
-        else:
+        # Validar si la carta puede agregarse usando la función central
+        if not self.can_add_to_combination(card, combination_idx, target_player_idx):
             return False
 
-        # Agregar la carta
+        # Agregar la carta a la combinación
         target_player.combinations[combination_idx]["cards"].append(card)
         current_player.remove_from_hand(card)
-        
-        # Si es una seguidilla, ordenar las cartas
+
+        # Reordenar si es seguidilla
         if target_player.combinations[combination_idx]["type"] == "sequence":
             target_player.combinations[combination_idx]["cards"].sort(key=lambda c: VALUES.index(c.value))
-        
-        # Verificar si el jugador ha ganado la ronda
+
+        # Verificar si ganó la ronda
         if self.check_round_win_condition(current_player):
             self.end_round(winner_idx=self.current_player_idx)
-        
-        # Enviar el estado actualizado
+
+        # Enviar actualización por red
         if self.network.is_host():
-            accion = "add_to_combination"
-            print(f"[HOST] Acción: {accion}, Estado antes de enviar: ronda={self.round_num}, jugador={self.current_player_idx}, estado={self.state}")
             self.network.send_game_state(self.to_dict())
         else:
             self.network.send_action({
@@ -360,34 +334,52 @@ class Game:
                 'player_id': self.player_id,
                 'card_idx': card_idx,
                 'combination_idx': combination_idx,
-                'target_player_idx': target_player_idx
+            'target_player_idx': target_player_idx
             })
-        
+
         return True
+
     
     def can_add_to_combination(self, card, combination_idx, player_idx):
-        target_player = self.players[player_idx]
-        if combination_idx >= len(target_player.combinations):
+        """Determina si una carta puede agregarse a una combinación específica"""
+        if player_idx < 0 or player_idx >= len(self.players):
             return False
+
+        target_player = self.players[player_idx]
+
+        if combination_idx < 0 or combination_idx >= len(target_player.combinations):
+            return False
+
         combination = target_player.combinations[combination_idx]
+
+        if card.is_joker:
+            return False  # Puedes cambiar esto si deseas permitir Jokers
+
         if combination["type"] == "trio":
-            # Para un trío, la carta debe tener el mismo valor
-            return any(card.value == c.value for c in combination["cards"])
+            return all(c.value == card.value for c in combination["cards"])
+
         elif combination["type"] == "sequence":
-            # Para una seguidilla, la carta debe ser del mismo palo y continuar la secuencia
-            if not all(card.suit == c.suit for c in combination["cards"]):
+            if not all(c.suit == card.suit for c in combination["cards"]):
                 return False
-            
-            # Ordenar las cartas por valor
-            sequence_values = [VALUES.index(c.value) for c in combination["cards"]]
-            min_val = min(sequence_values)
-            max_val = max(sequence_values)
-            
-            # Verificar si la carta puede añadirse al principio o al final
+
+            values = [VALUES.index(c.value) for c in combination["cards"] if c.value in VALUES]
             card_val = VALUES.index(card.value)
-            return card_val == min_val - 1 or card_val == max_val + 1
-        
+
+            if not values:
+                return False
+
+            min_val = min(values)
+            max_val = max(values)
+
+            # Comprobar si se puede agregar al inicio o final de la secuencia
+            next_val = (max_val + 1) % len(VALUES)
+            prev_val = (min_val - 1 + len(VALUES)) % len(VALUES)
+
+            return card_val == next_val or card_val == prev_val
+
         return False
+
+
     
     def replace_joker(self, card_idx, combination_idx, joker_idx, player_idx=None):
         """Reemplaza un Joker con una carta de la mano"""

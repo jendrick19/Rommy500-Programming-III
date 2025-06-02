@@ -10,6 +10,7 @@ class UI:
         self.card_font = card_font or pygame.font.SysFont(None, 32)
         self.info_font = pygame.font.SysFont("dejavusans", 24, bold=True)
         self.selected_card = None
+        self.selected_card_idx = None
         self.selected_combination = None
         self.selected_player = None
         self.action_buttons = []
@@ -177,6 +178,10 @@ class UI:
     
     def draw_player_hand(self, game):
         """Dibuja la mano del jugador local"""
+        valid_combos = self.get_valid_combinations_for_selected_card(game)
+        if valid_combos:
+            self.draw_add_to_combination_button()
+
         # Verificar que el ID del jugador es válido
         if game.player_id < 0 or game.player_id >= len(game.players):
             error_text = self.title_font.render(f"Error: ID de jugador no válido ({game.player_id})", True, (255, 0, 0))
@@ -240,7 +245,7 @@ class UI:
             card_x = hand_x + i * (CARD_WIDTH + card_spacing)
             card_y = hand_y
             # Si está seleccionada, subirla
-            if i == self.selected_card:
+            if i == self.selected_card_idx:
                 card_y -= 20  # Sube la carta 20 píxeles
                 pygame.draw.rect(self.screen, (255, 255, 0), 
                                 (card_x - 5, card_y - 5, CARD_WIDTH + 10, CARD_HEIGHT + 10), 3, border_radius=5)
@@ -432,13 +437,33 @@ class UI:
             self.screen.blit(discard_text, (discard_rect.centerx - discard_text.get_width() // 2, 
                                             discard_rect.centery - discard_text.get_height() // 2))
             self.action_buttons.append(("discard", discard_rect))
-        # Botón para añadir a combinación
+        # Botón para añadir a combinación (colocado a la derecha del mensaje de turno)
         if (player.took_discard or player.took_penalty) and self.selected_card is not None and self.selected_combination is not None:
-            add_to_combination_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 4, button_width, button_height)
+            # Posicionar botón en la parte superior, junto al mensaje de turno
+            button_width = 200
+            button_height = 40
+            button_x = 300  # Ajusta este valor según la longitud del texto del mensaje
+            button_y = 20   # Igual que el y del mensaje de estado
+
+            add_to_combination_rect = pygame.Rect(button_x, button_y, button_width, button_height)
             pygame.draw.rect(self.screen, BUTTON_COLOR, add_to_combination_rect, border_radius=5)
+
             add_to_combination_text = self.font.render("Añadir a la combinación", True, TEXT_COLOR)
-            self.screen.blit(add_to_combination_text, (add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
-    
+            text_rect = add_to_combination_text.get_rect(center=add_to_combination_rect.center)
+            self.screen.blit(add_to_combination_text, text_rect)
+
+            self.action_buttons.append(("add_to_combo", add_to_combination_rect))
+
+
+    def draw_add_to_combination_button(self):
+        font = pygame.font.SysFont(None, 32)
+        text = font.render("Agregar a combinación", True, (255, 255, 255))
+        rect = pygame.Rect(100, SCREEN_HEIGHT - 80, 250, 40)
+        pygame.draw.rect(self.screen, (0, 128, 0), rect)
+        self.screen.blit(text, (rect.x + 10, rect.y + 5))
+        self.add_to_comb_button_rect = rect  # Guardar para eventos
+
+
     def draw_status_message(self, game):
         """Dibuja un mensaje de estado"""
         message = ""
@@ -465,18 +490,20 @@ class UI:
     
     def handle_click(self, pos, game):
         """Maneja los clics del ratón"""
-        # Verificar si se hizo clic en un botón de acción
+        # 1. Verificar si se hizo clic en un botón
         for action, rect in self.action_buttons:
             if rect.collidepoint(pos):
+                print(f"[DEBUG] Botón '{action}' presionado")
                 self.handle_action(action, game)
                 return
 
-        # Verificar que el ID del jugador es válido
+        # 2. Validar jugador actual
         if game.player_id < 0 or game.player_id >= len(game.players):
             return
 
-        # Selección de carta de la mano del jugador local
         player = game.players[game.player_id]
+
+        # 3. Verificar si se hizo clic en una carta de la mano
         hand_x = 20
         base_y = SCREEN_HEIGHT - 280
         hand_y = base_y + 60
@@ -487,59 +514,79 @@ class UI:
             card_y = hand_y
             card_rect = pygame.Rect(card_x, card_y, CARD_WIDTH, CARD_HEIGHT)
             if card_rect.collidepoint(pos):
+                print(f"[DEBUG] Carta seleccionada índice {i}")
                 self.selected_card = i
-                # Si ya hay una combinación seleccionada, intentar añadir la carta
+                self.selected_card_idx = i
+                # ¿Ya hay una combinación seleccionada?
                 if self.selected_combination is not None and self.selected_player is not None:
+                    print("[DEBUG] Intentando agregar carta a combinación desde carta clicada")
                     self.handle_action("add_to_combo", game)
                 return
 
-        # Selección de combinaciones de cualquier jugador
+        # 4. Verificar si se hizo clic en una combinación en mesa
         for pid, p in enumerate(game.players):
             for cidx in range(len(p.combinations)):
                 combo_rect = self.get_combination_rect(pid, cidx, game)
                 if combo_rect.collidepoint(pos):
+                    print(f"[DEBUG] Combinación seleccionada: Jugador {pid}, Combo {cidx}")
                     self.selected_combination = cidx
                     self.selected_player = pid
-                    if self.selected_card is not None:
+                    if self.selected_card_idx is not None:
+                        print("[DEBUG] Intentando agregar carta a combinación desde combinación clicada")
                         self.handle_action("add_to_combo", game)
                     return
 
-        # Si no se hizo clic en nada relevante, limpiar selección
+        # 5. Si no se hizo clic en nada relevante, limpiar selección
         self.selected_card = None
+        self.selected_card_idx = None
         self.selected_combination = None
         self.selected_player = None
+        print("[DEBUG] Selección limpiada")
+
 
     def handle_action(self, action, game):
-        if action == "draw_deck":
-            game.take_card_from_deck()
-            game.update()
-        elif action == "draw_discard":
-            game.take_card_from_discard()
-            game.update()
-        elif action == "lay_down":
-            game.lay_down_combination()
-            game.update()
-        elif action == "discard" and self.selected_card is not None:
-            game.discard_card(self.selected_card)
-            self.selected_card = None
-            game.update()
-        elif action == "next_round":
-            if game.network.is_host():
-                game.start_new_round()
-                game.update()
+        try:
+            if action == "draw_deck":
+                game.take_card_from_deck()
+            elif action == "draw_discard":
+                game.take_card_from_discard()
+            elif action == "lay_down":
+                game.lay_down_combination()
+            elif action == "discard" and self.selected_card is not None:
+                game.discard_card(self.selected_card)
+                self.selected_card = None
+                self.selected_card_idx = None
+            elif action == "next_round":
+                if game.network.is_host():
+                    game.start_new_round()
+            elif action == "add_to_combo":
+                if self.selected_card_idx is None or self.selected_player is None or self.selected_combination is None:
+                    print("[WARN] Faltan selecciones para agregar a combinación.")
+                    return
 
-        elif action == "add_to_combo" and self.selected_card is not None and self.selected_combination is not None and self.selected_player is not None:
-            # Permitir añadir a cualquier combinación bajada (propia o de otro jugador)
-            game.add_to_combination(
-                self.selected_card,
-                self.selected_combination,
-                self.selected_player
-            )
-            # No limpiar self.selected_combination ni self.selected_player,
-            # solo limpiar la carta seleccionada para permitir añadir varias seguidas
-            self.selected_card = None
-        game.update()
+                current_player = game.players[game.player_id]
+                if self.selected_card_idx >= len(current_player.hand):
+                    print(f"[ERROR] Índice de carta inválido: {self.selected_card_idx}")
+                    return
 
+                card = current_player.hand[self.selected_card_idx]
+                valid = game.can_add_to_combination(card, self.selected_combination, self.selected_player)
+
+                if not valid:
+                    print(f"[INFO] No se puede agregar {card} a combinación {self.selected_combination} del jugador {self.selected_player}")
+                    return
+
+                added = game.add_to_combination(self.selected_card_idx, self.selected_combination, self.selected_player)
+                if added:
+                    print(f"[OK] Carta {card} agregada exitosamente a la combinación del jugador {self.selected_player}")
+                    self.selected_card = None
+                    self.selected_card_idx = None
+                else:
+                    print(f"[ERROR] Falló al agregar {card} a combinación del jugador {self.selected_player}")
+        except Exception as e:
+            print(f"[EXCEPTION] Error en handle_action({action}): {e}")
+        finally:
+            game.update()
 
     def animate_deal(self, game):
         """Animación de reparto de cartas a todos los jugadores antes de que aparezcan en la mano"""
@@ -693,3 +740,23 @@ class UI:
             self.screen.blit(btn_text, (next_button_rect.centerx - btn_text.get_width() // 2, next_button_rect.centery - btn_text.get_height() // 2))
             self.action_buttons = [("next_round", next_button_rect)]
         pygame.display.flip()
+
+    def get_valid_combinations_for_selected_card(self, game):
+        if self.selected_card_idx is None:
+            return []
+
+        current_player = game.players[game.current_player_idx]
+
+        # ✅ Validar que el índice está dentro del rango actual
+        if self.selected_card_idx >= len(current_player.hand):
+            return []
+
+        card = current_player.hand[self.selected_card_idx]
+
+        valid_targets = []
+        for p_idx, player in enumerate(game.players):
+            for c_idx, combo in enumerate(player.combinations):
+                if game.can_add_to_combination(card, c_idx, p_idx):
+                    valid_targets.append((p_idx, c_idx))
+        return valid_targets
+

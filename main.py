@@ -314,7 +314,6 @@ def main():
     while running and network.connected:
         # Enviar el estado periódicamente SOLO si eres host
         if network.is_host() and (time.time() - last_broadcast > broadcast_interval):
-            print(f"[HOST] Enviando estado a clientes. Ronda: {game.round_num}, Jugador actual: {game.current_player_idx}, Estado: {game.state}")
             network.send_game_state(game.to_dict())
             last_broadcast = time.time()
         # Procesar todos los eventos una sola vez
@@ -363,8 +362,6 @@ def main():
 
         # Actualizar estado del juego
         game.update()
-        if not network.is_host():
-            print(f"[CLIENTE] Estado local tras update: ronda={game.round_num}, jugador={game.current_player_idx}, estado={game.state}")
         # Renderizar
         screen.fill(BG_COLOR)
         ui.draw(game)

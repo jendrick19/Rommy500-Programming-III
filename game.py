@@ -320,20 +320,23 @@ class Game:
         # Si es otro jugador rechazando durante la oferta
         if self.discard_offer and self.discard_offered_to == self.player_id:
             print(f"[HOST] Jugador {self.player_id} rechaza durante la oferta")
+            # Asegurarse de agregar SIEMPRE al jugador que rechaza
             if self.player_id not in self.rejected_discard:
                 self.rejected_discard.append(self.player_id)
                 print(f"[HOST] Rechazaron: {self.rejected_discard}")
 
             # Buscar siguiente jugador elegible
-            next_player = (self.player_id + 1) % len(self.players)
-            original_next = next_player
+            current = self.player_id
+            next_player = (current + 1) % len(self.players)
             while next_player in self.rejected_discard or next_player == self.discard_origin_player:
                 next_player = (next_player + 1) % len(self.players)
-                if next_player == original_next:  # Si hemos dado la vuelta completa
+                if next_player == current:
+                    # Todos los jugadores (excepto el origen) han rechazado
+                    next_player = self.discard_origin_player
                     break
 
-            # Si volvimos al jugador origen o todos rechazaron
-            if next_player == self.discard_origin_player or len(self.rejected_discard) >= len(self.players) - 1:
+            # Si volvimos al jugador origen, termina la oferta
+            if next_player == self.discard_origin_player:
                 print("[HOST] Todos rechazaron la carta o volvimos al origen. Terminando fase de oferta.")
                 self.discard_offer = False
                 self.rejected_discard = []
@@ -342,10 +345,8 @@ class Game:
                     print(f"[HOST] El jugador {self.current_player_idx} debe tomar del mazo")
                     self.network.send_game_state(self.to_dict())
             else:
-                # Ofrecer al siguiente jugador
                 print(f"[HOST] Ahora se ofrece al jugador {next_player}")
                 self.discard_offered_to = next_player
-                # REINICIAR FLAGS DEL NUEVO JUGADOR OFRECIDO
                 self.players[next_player].took_discard = False
                 self.players[next_player].took_penalty = False
                 if self.network.is_host():
@@ -805,31 +806,37 @@ class Game:
             # Si es otro jugador durante la oferta
             elif self.discard_offer and self.discard_offered_to == player_id:
                 print(f"[HOST] Jugador {player_id} rechaza durante la oferta")
+                # Asegurarse de agregar SIEMPRE al jugador que rechaza
                 if player_id not in self.rejected_discard:
                     self.rejected_discard.append(player_id)
                     print(f"[HOST] Rechazaron: {self.rejected_discard}")
 
                 # Buscar siguiente jugador elegible
-                next_player = (player_id + 1) % len(self.players)
-                original_next = next_player
+                current = player_id
+                next_player = (current + 1) % len(self.players)
                 while next_player in self.rejected_discard or next_player == self.discard_origin_player:
                     next_player = (next_player + 1) % len(self.players)
-                    if next_player == original_next:
+                    if next_player == current:
+                        # Todos los jugadores (excepto el origen) han rechazado
+                        next_player = self.discard_origin_player
                         break
 
-                # Si todos rechazaron (menos el origen) o volvimos al origen
-                if next_player == self.discard_origin_player or len(self.rejected_discard) >= len(self.players) - 1:
+                # Si volvimos al jugador origen, termina la oferta
+                if next_player == self.discard_origin_player:
                     print("[HOST] Todos rechazaron la carta o volvimos al origen. Terminando fase de oferta.")
                     self.discard_offer = False
                     self.rejected_discard = []
                     self.discard_offered_to = self.discard_origin_player
-                    # Aquí el jugador origen debe tomar del mazo
+                    if self.network.is_host():
+                        print(f"[HOST] El jugador {self.current_player_idx} debe tomar del mazo")
+                        self.network.send_game_state(self.to_dict())
                 else:
                     print(f"[HOST] Ahora se ofrece al jugador {next_player}")
                     self.discard_offered_to = next_player
-                    # Reiniciar flags del nuevo jugador ofrecido
                     self.players[next_player].took_discard = False
                     self.players[next_player].took_penalty = False
+                    if self.network.is_host():
+                        self.network.send_game_state(self.to_dict())
 
                 print(f"[HOST] Estado después del rechazo: oferta={self.discard_offer}, ofrecido_a={self.discard_offered_to}")
                 self.network.send_game_state(self.to_dict())

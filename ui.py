@@ -422,27 +422,29 @@ class UI:
         elif game.current_player_idx == game.player_id:
             # Si no ha tomado carta aún
             if not player.took_discard and not player.took_penalty:
-                # Mostrar botones iniciales para el jugador MANO
+                # --- CAMBIO: NO mostrar botón "Tomar del Descarte" si el jugador fue el origen de la última oferta ---
+                if game.discard_origin_player != game.player_id:
+                    # Botón para tomar del descarte
+                    draw_discard_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 2, button_width, button_height)
+                    pygame.draw.rect(self.screen, BUTTON_COLOR, draw_discard_rect, border_radius=5)
+                    draw_discard_text = font.render("Tomar del Descarte", True, (255, 255, 255))
+                    self.screen.blit(draw_discard_text, (draw_discard_rect.centerx - draw_discard_text.get_width() // 2,
+                                                        draw_discard_rect.centery - draw_discard_text.get_height() // 2))
+                    self.action_buttons.append(("draw_discard", draw_discard_rect))
+
+                # Mostrar botón "Tomar del mazo"
                 draw_deck_rect = pygame.Rect(start_x, start_y, button_width, button_height)
                 pygame.draw.rect(self.screen, BUTTON_COLOR, draw_deck_rect, border_radius=5)
                 draw_deck_text = font.render("Tomar del mazo", True, (255, 255, 255))
-                self.screen.blit(draw_deck_text, (draw_deck_rect.centerx - draw_deck_text.get_width() // 2, 
+                self.screen.blit(draw_deck_text, (draw_deck_rect.centerx - draw_deck_text.get_width() // 2,
                                                 draw_deck_rect.centery - draw_deck_text.get_height() // 2))
                 self.action_buttons.append(("draw_deck", draw_deck_rect))
-
-                # Botón para tomar del descarte
-                draw_discard_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 2, button_width, button_height)
-                pygame.draw.rect(self.screen, BUTTON_COLOR, draw_discard_rect, border_radius=5)
-                draw_discard_text = font.render("Tomar del Descarte", True, (255, 255, 255))
-                self.screen.blit(draw_discard_text, (draw_discard_rect.centerx - draw_discard_text.get_width() // 2, 
-                                                draw_discard_rect.centery - draw_discard_text.get_height() // 2))
-                self.action_buttons.append(("draw_discard", draw_discard_rect))
 
                 # Botón para rechazar descarte
                 reject_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
                 pygame.draw.rect(self.screen, BUTTON_COLOR, reject_rect, border_radius=5)
                 reject_text = font.render("Rechazar Descarte", True, (255, 255, 255))
-                self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2, 
+                self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2,
                                             reject_rect.centery - reject_text.get_height() // 2))
                 self.action_buttons.append(("reject_discard", reject_rect))
             # Si el jugador ya tomó una carta

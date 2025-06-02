@@ -118,8 +118,6 @@ class Game:
         if self.state == GAME_STATE_ROUND_END:
             # Iniciar nueva ronda si somos el host
             if self.network.is_host():
-                accion = "update"
-                print(f"[HOST] Acción: {accion}, Estado antes de enviar: ronda={self.round_num}, jugador={self.current_player_idx}, estado={self.state}")
                 self.end_round()
             return
     
@@ -169,8 +167,6 @@ class Game:
         
         # Enviar el estado actualizado a todos los jugadores
         if self.network.is_host():
-            accion = "start_new_round"
-            print(f"[HOST] Acción: {accion}, Estado antes de enviar: ronda={self.round_num}, jugador={self.current_player_idx}, estado={self.state}")
             self.network.send_game_state(self.to_dict())
     
     def take_card_from_deck(self):
@@ -378,8 +374,6 @@ class Game:
         else:
             # Enviar el estado actualizado
             if self.network.is_host():
-                accion = "lay_down_combination"
-                print(f"[HOST] Acción: {accion}, Estado antes de enviar: ronda={self.round_num}, jugador={self.current_player_idx}, estado={self.state}")
                 self.network.send_game_state(self.to_dict())
             else:
                 self.network.send_action({
@@ -388,69 +382,104 @@ class Game:
                 })
         return True
     
-    def add_to_combination(self, card_idx, combination_idx, player_idx=None):
-        """Añade una carta a una combinación existente"""
-        if self.state != GAME_STATE_PLAYING:
-            return False
-        
-        current_player = self.players[self.current_player_idx]
-        # Si no se especifica, agregar a una combinación propia
-        target_player_idx = player_idx if player_idx is not None else self.current_player_idx
-        target_player = self.players[target_player_idx]
+    def add_to_combination(self, card_idx, combination_idx, player_idx=None, actor_idx=None):
+        print(f"[DEBUG] add_to_combination llamado con card_idx={card_idx}, combination_idx={combination_idx}, player_idx={player_idx}")
 
-        # Solo puedes agregar a combinaciones de otros si ya te bajaste
-        if target_player_idx != self.current_player_idx and not current_player.has_laid_down:
-            return False
+        if actor_idx is None:
+            actor_idx = self.player_id
+        local_player = self.players[actor_idx]
+        target_player = self.players[player_idx if player_idx is not None else actor_idx]
+        target_player_idx = player_idx if player_idx is not None else actor_idx
 
-        # Validar índice de carta y combinación
-        if card_idx < 0 or card_idx >= len(current_player.hand):
+        print(f"[DEBUG] local_player.id={local_player.id}, target_player.id={target_player.id}, target_player_idx={target_player_idx}")
+        print(f"[DEBUG] Mano del jugador local antes: {[str(c) for c in local_player.hand]}")
+        print(f"[DEBUG] Combinaciones del jugador objetivo antes: {[[str(c) for c in combo['cards']] for combo in target_player.combinations]}")
+
+        # Validar índices
+        if card_idx < 0 or card_idx >= len(local_player.hand):
+            print(f"[ERROR] Índice de carta inválido: {card_idx} para mano de tamaño {len(local_player.hand)}")
             return False
-        
-        card = current_player.hand[card_idx]
-        
-        # Si no se especifica un jugador, usar el jugador actual
-        target_player_idx = player_idx if player_idx is not None else self.current_player_idx
-        target_player = self.players[target_player_idx]
-        
-        # Verificar si el índice de la combinación es válido
         if combination_idx < 0 or combination_idx >= len(target_player.combinations):
+            print(f"[ERROR] Índice de combinación inválido: {combination_idx} para combinaciones de tamaño {len(target_player.combinations)}")
             return False
 
-        card = current_player.hand[card_idx]
-        combination = target_player.combinations[combination_idx]
+        card = local_player.hand[card_idx]
+        print(f"[DEBUG] Intentando agregar carta: {card} a combinación {combination_idx} del jugador {target_player.id}")
 
-        # Validar si la carta puede agregarse a la combinación
-        if combination["type"] == "trio":
-            if not all(card.value == c.value for c in combination["cards"]):
-                return False
-        elif combination["type"] == "sequence":
-            if not all(card.suit == c.suit for c in combination["cards"]):
-                return False
-            values = [VALUES.index(c.value) for c in combination["cards"]]
+        # Validar si la carta puede agregarse usando la función central
+        can_add = self.can_add_to_combination(card, combination_idx, target_player_idx)
+        print(f"[DEBUG] Resultado de can_add_to_combination: {can_add}")
+        if not can_add:
+            print(f"[INFO] No se puede agregar {card} a combinación {combination_idx} del jugador {target_player.id}")
+            return False
+
+        replaced_joker = False
+        if target_player.combinations[combination_idx]["type"] == "sequence":
+            combo_cards = target_player.combinations[combination_idx]["cards"]
+            indices = [VALUES.index(c.value) if not c.is_joker else None for c in combo_cards]
             card_val = VALUES.index(card.value)
-            if not (card_val == min(values) - 1 or card_val == max(values) + 1):
-                return False
-        else:
-            return False
+            for idx, c in enumerate(combo_cards):
+                if c.is_joker:
+                    left_val = indices[idx - 1] if idx > 0 else None
+                    right_val = indices[idx + 1] if idx < len(indices) - 1 else None
+                    if (left_val is not None and card_val == left_val + 1) or (right_val is not None and card_val == right_val - 1):
+                        # Reemplazar el joker por la carta real
+                        joker_card = combo_cards[idx]
+                        combo_cards[idx] = card
+                        local_player.remove_from_hand(card)
+                        local_player.add_to_hand(joker_card)
+                        replaced_joker = True
+                        print(f"[DEBUG] Joker reemplazado por {card}, joker {joker_card} devuelto a la mano del jugador.")
+                        break
+            if not replaced_joker:
+                # Agregar la carta normalmente (al inicio o final)
+                target_player.combinations[combination_idx]["cards"].append(card)
+                local_player.remove_from_hand(card)
+        elif target_player.combinations[combination_idx]["type"] == "trio":
+            combo_cards = target_player.combinations[combination_idx]["cards"]
+            # Si la carta es joker y hay menos de 4 cartas, simplemente agregarlo
+            if card.is_joker and len(combo_cards) < 4:
+                target_player.combinations[combination_idx]["cards"].append(card)
+                local_player.remove_from_hand(card)
+                replaced_joker = True
+                print(f"[DEBUG] Joker añadido al trío.")
+            else:
+                # Reemplazar un joker por una carta real
+                non_joker_values = [cc.value for cc in combo_cards if not cc.is_joker]
+                for idx, c in enumerate(combo_cards):
+                    if c.is_joker and non_joker_values and card.value == non_joker_values[0]:
+                        joker_card = combo_cards[idx]
+                        combo_cards[idx] = card
+                        local_player.remove_from_hand(card)
+                        local_player.add_to_hand(joker_card)
+                        replaced_joker = True
+                        print(f"[DEBUG] Joker reemplazado por {card} en trío, joker {joker_card} devuelto a la mano del jugador.")
+                        break
+                if not replaced_joker:
+                    # Agregar la carta normalmente
+                    target_player.combinations[combination_idx]["cards"].append(card)
+                    local_player.remove_from_hand(card)
 
-        # Agregar la carta
-        target_player.combinations[combination_idx]["cards"].append(card)
-        current_player.remove_from_hand(card)
-        
-        # Si es una seguidilla, ordenar las cartas
+        print(f"[DEBUG] Mano del jugador local después: {[str(c) for c in local_player.hand]}")
+        print(f"[DEBUG] Combinaciones del jugador objetivo después: {[[str(c) for c in combo['cards']] for combo in target_player.combinations]}")
+
+        # Reordenar si es seguidilla
         if target_player.combinations[combination_idx]["type"] == "sequence":
             target_player.combinations[combination_idx]["cards"].sort(key=lambda c: VALUES.index(c.value))
-        
-        # Verificar si el jugador ha ganado la ronda
-        if self.check_round_win_condition(current_player):
+            print(f"[DEBUG] Combinación reordenada (secuencia): {[str(c) for c in target_player.combinations[combination_idx]['cards']]}")
+
+        # Verificar si ganó la ronda
+        if self.check_round_win_condition(local_player):
+            print("[DEBUG] El jugador local ha ganado la ronda tras agregar a combinación.")
             self.end_round(winner_idx=self.current_player_idx)
-        
-        # Enviar el estado actualizado
+
+        # Enviar actualización por red
         if self.network.is_host():
-            accion = "add_to_combination"
-            print(f"[HOST] Acción: {accion}, Estado antes de enviar: ronda={self.round_num}, jugador={self.current_player_idx}, estado={self.state}")
+            print("[DEBUG] Enviando estado actualizado a los clientes (host).")
             self.network.send_game_state(self.to_dict())
+            return True
         else:
+            print("[DEBUG] Enviando acción de agregar a combinación al host.")
             self.network.send_action({
                 'type': ACTION_ADD_TO_COMBINATION,
                 'player_id': self.player_id,
@@ -458,153 +487,69 @@ class Game:
                 'combination_idx': combination_idx,
                 'target_player_idx': target_player_idx
             })
-        
-        return True
-    
-    def can_add_to_combination(self, card, combination_idx, player_idx):
-        target_player = self.players[player_idx]
-        if combination_idx >= len(target_player.combinations):
-            return False
-        combination = target_player.combinations[combination_idx]
-        if combination["type"] == "trio":
-            # Para un trío, la carta debe tener el mismo valor
-            return any(card.value == c.value for c in combination["cards"])
-        elif combination["type"] == "sequence":
-            # Para una seguidilla, la carta debe ser del mismo palo y continuar la secuencia
-            if not all(card.suit == c.suit for c in combination["cards"]):
-                return False
-            
-            # Ordenar las cartas por valor
-            sequence_values = [VALUES.index(c.value) for c in combination["cards"]]
-            min_val = min(sequence_values)
-            max_val = max(sequence_values)
-            
-            # Verificar si la carta puede añadirse al principio o al final
-            card_val = VALUES.index(card.value)
-            return card_val == min_val - 1 or card_val == max_val + 1
-        
-        return False
-    
-    def replace_joker(self, card_idx, combination_idx, joker_idx, player_idx=None):
-        """Reemplaza un Joker con una carta de la mano"""
-        if self.state != GAME_STATE_PLAYING:
-            return False
-        
-        current_player = self.players[self.current_player_idx]
-        
-        # Verificar si el jugador se ha bajado
-        if not current_player.has_laid_down:
-            return False
-        
-        # Verificar si el índice de la carta es válido
-        if card_idx < 0 or card_idx >= len(current_player.hand):
-            return False
-        
-        card = current_player.hand[card_idx]
-        
-        # Si no se especifica un jugador, usar el jugador actual
-        target_player_idx = player_idx if player_idx is not None else self.current_player_idx
-        target_player = self.players[target_player_idx]
-        
-        # Verificar si los índices son válidos
-        if combination_idx < 0 or combination_idx >= len(target_player.combinations):
-            return False
-        
-        combination = target_player.combinations[combination_idx]
-        
-        if joker_idx < 0 or joker_idx >= len(combination["cards"]):
-            return False
-        
-        joker_card = combination["cards"][joker_idx]
-        
-        # Verificar si la carta a reemplazar es un Joker
-        if not joker_card.is_joker:
-            return False
-        
-        # Verificar si la carta puede reemplazar al Joker
-        if not self.can_replace_joker(card, combination, joker_idx):
-            return False
-        
-        # Reemplazar el Joker
-        combination["cards"][joker_idx] = card
-        current_player.remove_from_hand(card)
-        current_player.add_to_hand(joker_card)
-        
-        # Si es una seguidilla, ordenar las cartas
-        if combination["type"] == "sequence":
-            combination["cards"].sort(key=lambda c: VALUES.index(c.value))
-        
-        # Verificar si el jugador ha ganado la ronda
-        if self.check_round_win_condition(current_player):
-            self.end_round(winner_idx=self.current_player_idx)
-        
-        # Enviar el estado actualizado
-        if self.network.is_host():
-            accion = "replace_joker"
-            print(f"[HOST] Acción: {accion}, Estado antes de enviar: ronda={self.round_num}, jugador={self.current_player_idx}, estado={self.state}")
-            self.network.send_game_state(self.to_dict())
-        else:
-            self.network.send_action({
-                'type': ACTION_REPLACE_JOKER,
-                'player_id': self.player_id,
-                'card_idx': card_idx,
-                'combination_idx': combination_idx,
-                'joker_idx': joker_idx,
-                'target_player_idx': target_player_idx
-            })
-        
-        return True
-    
-    def can_replace_joker(self, card, combination, joker_idx):
-        """Verifica si una carta puede reemplazar un Joker en una combinación"""
-        joker_card = combination["cards"][joker_idx]
-        if not joker_card.is_joker:
-            return False
-        
-        # Para un trío, la carta debe tener el mismo valor que las demás
-        if combination["type"] == "trio":
-            non_joker_cards = [c for c in combination["cards"] if not c.is_joker]
-            if not non_joker_cards:
-                return True  # Si solo hay Jokers, cualquier carta puede reemplazarlo
-            return card.value == non_joker_cards[0].value
-        
-        # Para una seguidilla, la carta debe encajar en la posición del Joker
-        elif combination["type"] == "sequence":
-            # Crear una copia de la combinación con la carta reemplazando al Joker
-            temp_cards = combination["cards"].copy()
-            temp_cards[joker_idx] = card
-            
-            # Verificar que todas las cartas son del mismo palo
-            if not all(c.suit == temp_cards[0].suit for c in temp_cards if not c.is_joker):
-                return False
-            
-            # Verificar que los valores forman una secuencia
-            non_joker_cards = [(i, c) for i, c in enumerate(temp_cards) if not c.is_joker]
-            if not non_joker_cards:
-                return True  # Si solo hay Jokers, cualquier carta puede reemplazarlo
-            
-            # Ordenar por valor
-            non_joker_cards.sort(key=lambda x: VALUES.index(x[1].value))
-            
-            # Verificar que la secuencia es válida
-            for i in range(1, len(non_joker_cards)):
-                prev_idx, prev_card = non_joker_cards[i-1]
-                curr_idx, curr_card = non_joker_cards[i]
-                
-                # Calcular la diferencia de valores
-                prev_val = VALUES.index(prev_card.value)
-                curr_val = VALUES.index(curr_card.value)
-                diff = curr_val - prev_val
-                
-                # Verificar que la diferencia es correcta considerando los Jokers entre medias
-                jokers_between = sum(1 for idx in range(prev_idx + 1, curr_idx) if temp_cards[idx].is_joker)
-                if diff != jokers_between + 1:
-                    return False
-            
             return True
-        
+
+    def can_add_to_combination(self, card, combination_idx, player_idx):
+        print(f"[DEBUG] can_add_to_combination: card={card}, combination_idx={combination_idx}, player_idx={player_idx}")
+        if player_idx < 0 or player_idx >= len(self.players):
+            print(f"[ERROR] player_idx fuera de rango: {player_idx}")
+            return False
+
+        target_player = self.players[player_idx]
+
+        if combination_idx < 0 or combination_idx >= len(target_player.combinations):
+            print(f"[ERROR] combination_idx fuera de rango: {combination_idx}")
+            return False
+
+        combination = target_player.combinations[combination_idx]
+        print(f"[DEBUG] Combinación objetivo: {[[str(c) for c in combination['cards']]]}, tipo: {combination['type']}")
+
+        if combination["type"] == "trio":
+            # Permitir agregar joker si hay menos de 4 cartas
+            if card.is_joker and len(combination["cards"]) < 4:
+                print(f"[DEBUG] Joker puede ser añadido al trío.")
+                return True
+            # Permitir reemplazo de joker por carta real
+            non_joker_values = [c.value for c in combination["cards"] if not c.is_joker]
+            if non_joker_values and card.value == non_joker_values[0]:
+                print(f"[DEBUG] ¿Es trío válido? True")
+                return True
+            print(f"[DEBUG] ¿Es trío válido? False")
+            return False
+
+        elif combination["type"] == "sequence":
+            # Permitir reemplazo de joker
+            suits = [c.suit for c in combination["cards"] if not c.is_joker]
+            if suits and not all(s == card.suit for s in suits):
+                print("[DEBUG] Palo no coincide en la secuencia.")
+                return False
+
+            indices = [VALUES.index(c.value) if not c.is_joker else None for c in combination["cards"]]
+            card_val = VALUES.index(card.value)
+
+            # Si hay un joker en la secuencia, verifica si la carta puede reemplazarlo
+            for idx, c in enumerate(combination["cards"]):
+                if c.is_joker:
+                    left_val = indices[idx - 1] if idx > 0 else None
+                    right_val = indices[idx + 1] if idx < len(indices) - 1 else None
+                    if (left_val is not None and card_val == left_val + 1) or (right_val is not None and card_val == right_val - 1):
+                        print("[DEBUG] Carta puede reemplazar al joker en la secuencia.")
+                        return True
+
+            # Si no es reemplazo de joker, ¿puede agregarse al inicio o final?
+            non_joker_indices = [i for i in indices if i is not None]
+            if not non_joker_indices:
+                print("[DEBUG] No hay valores en la secuencia.")
+                return False
+            min_val = min(non_joker_indices)
+            max_val = max(non_joker_indices)
+            result = card_val == min_val - 1 or card_val == max_val + 1
+            print(f"[DEBUG] ¿Se puede agregar a la secuencia? {result}")
+            return result
+
+        print("[DEBUG] Tipo de combinación no soportado.")
         return False
-    
+   
     def discard_card(self, card_idx):
         """El jugador actual descarta una carta"""
         if self.state != GAME_STATE_PLAYING:
@@ -643,7 +588,9 @@ class Game:
                 self.network.send_game_state(self.to_dict())
 
         # Enviar el estado actualizado
-        if not self.network.is_host():
+        if self.network.is_host():
+            self.network.send_game_state(self.to_dict())
+        else:
             self.network.send_action({
                 'type': ACTION_DISCARD,
                 'player_id': self.player_id,
@@ -702,8 +649,6 @@ class Game:
         print(f"Puntuaciones de la ronda: {self.round_scores}")
         
         if self.network.is_host():
-            accion = "end_round"
-            print(f"[HOST] Acción: {accion}, Estado antes de enviar: ronda={self.round_num}, jugador={self.current_player_idx}, estado={self.state}")
             self.network.send_game_state(self.to_dict())
     
     def to_dict(self):
@@ -846,31 +791,20 @@ class Game:
                     self.network.send_game_state(self.to_dict())
 
         elif action_type == ACTION_ADD_TO_COMBINATION:
-            if self.current_player_idx == player_id:
-                self.add_to_combination(
-                    action['card_idx'],
-                    action['combination_idx'],
-                    action.get('target_player_idx')
-                )
-                if not self.check_and_end_round():
-                    self.network.send_game_state(self.to_dict())
-
+            self.add_to_combination(
+                action['card_idx'],
+                action['combination_idx'],
+                action.get('target_player_idx'),
+                actor_idx=player_id
+            )
+            if not self.check_and_end_round():
+                self.network.send_game_state(self.to_dict())
         elif action_type == ACTION_DISCARD:
             if self.current_player_idx == player_id:
                 self.discard_card(action['card_idx'])
                 if not self.check_and_end_round():
                     self.network.send_game_state(self.to_dict())
 
-        elif action_type == ACTION_REPLACE_JOKER:
-            if self.current_player_idx == player_id:
-                self.replace_joker(
-                    action['card_idx'],
-                    action['combination_idx'],
-                    action['joker_idx'],
-                    action.get('target_player_idx')
-                )
-                if not self.check_and_end_round():
-                    self.network.send_game_state(self.to_dict())
 
     def check_deck_duplicates(self, mensaje=""):
         seen = set()

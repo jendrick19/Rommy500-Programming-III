@@ -380,10 +380,6 @@ class UI:
         player = game.players[game.player_id]
         current_offer_state = (game.discard_offer, game.discard_offered_to, game.player_id, player.is_mano)
         if current_offer_state != getattr(self, "_last_offer_state", None):
-            print(f"[UI] ¿Mostrar botones? discard_offer={game.discard_offer}, "
-                f"discard_offered_to={game.discard_offered_to}, "
-                f"player_id={game.player_id}, "
-                f"is_mano={player.is_mano}")
             self._last_offer_state = current_offer_state
         button_width = 150
         button_height = 40
@@ -407,23 +403,35 @@ class UI:
                     self.screen.blit(take_penalty_text, (take_penalty_rect.centerx - take_penalty_text.get_width() // 2,
                                                         take_penalty_rect.centery - take_penalty_text.get_height() // 2))
                     self.action_buttons.append(("take_discard_penalty", take_penalty_rect))
-                    print(f"[DEBUG] Mostrando botón de penalización a jugador {game.player_id}")
-
                     reject_rect = pygame.Rect(start_x, start_y + button_height + button_spacing, button_width, button_height)
                     pygame.draw.rect(self.screen, BUTTON_COLOR, reject_rect, border_radius=5)
                     reject_text = font.render("Rechazar Descarte", True, (255, 255, 255))
                     self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2,
                                                 reject_rect.centery - reject_text.get_height() // 2))
                     self.action_buttons.append(("reject_discard", reject_rect))
-                    print(f"[DEBUG] Mostrando botón de rechazar descarte a jugador {game.player_id}")
                 return  # Si no es el jugador al que se le ofrece, no mostrar botones
         
         # Si es el turno del jugador local (no en fase de oferta)
         elif game.current_player_idx == game.player_id:
             # Si no ha tomado carta aún
             if not player.took_discard and not player.took_penalty:
-                # --- CAMBIO: NO mostrar botón "Tomar del Descarte" si el jugador fue el origen de la última oferta ---
-                if game.discard_origin_player != game.player_id:
+                if (
+                        not game.discard_offer and
+                        game.current_player_idx == game.player_id and
+                        game.discard_origin_player == game.player_id and
+                        not player.took_discard and
+                        not player.took_penalty
+                    ):
+                    # NO mostrar botón "Tomar del Descarte"
+                    pass
+                else:
+                    # botón "Rechazar Descarte"
+                    reject_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
+                    pygame.draw.rect(self.screen, BUTTON_COLOR, reject_rect, border_radius=5)
+                    reject_text = font.render("Rechazar Descarte", True, (255, 255, 255))
+                    self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2,
+                                                reject_rect.centery - reject_text.get_height() // 2))
+                    self.action_buttons.append(("reject_discard", reject_rect))
                     # Botón para tomar del descarte
                     draw_discard_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 2, button_width, button_height)
                     pygame.draw.rect(self.screen, BUTTON_COLOR, draw_discard_rect, border_radius=5)
@@ -440,13 +448,6 @@ class UI:
                                                 draw_deck_rect.centery - draw_deck_text.get_height() // 2))
                 self.action_buttons.append(("draw_deck", draw_deck_rect))
 
-                # Botón para rechazar descarte
-                reject_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
-                pygame.draw.rect(self.screen, BUTTON_COLOR, reject_rect, border_radius=5)
-                reject_text = font.render("Rechazar Descarte", True, (255, 255, 255))
-                self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2,
-                                            reject_rect.centery - reject_text.get_height() // 2))
-                self.action_buttons.append(("reject_discard", reject_rect))
             # Si el jugador ya tomó una carta
             else:
                 # Botón para bajarse (si puede)
@@ -574,7 +575,6 @@ class UI:
         elif action == "reject_discard":
             # Iniciar/continuar la oferta de descarte
             if game.current_player_idx == game.player_id:
-                print(f"[UI] Jugador {game.player_id} rechaza el descarte")
                 # Enviar acción al juego
                 game.reject_discard_offer()
                 # Forzar actualización del estado
@@ -583,7 +583,6 @@ class UI:
                     game.rejected_discard = [game.current_player_idx]
                     game.discard_offered_to = (game.current_player_idx + 1) % len(game.players)
                     game.discard_origin_player = game.current_player_idx
-                    print(f"[UI] Iniciando oferta. Siguiente jugador: {game.discard_offered_to}")
                     game.network.send_game_state(game.to_dict())
             else:
                 # Si no es el jugador MANO, solo rechazar

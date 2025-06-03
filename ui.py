@@ -165,7 +165,7 @@ class UI:
     def draw_player_combinations(self, player, x, y):
         """Dibuja las combinaciones de un jugador con separación entre cartas y alineado"""
         combo_spacing = 35  # Espacio vertical entre combinaciones
-        card_spacing = 25   # Espacio horizontal entre mini-cards
+        card_spacing = 28   # Espacio horizontal entre mini-cards
 
         for i, combo in enumerate(player.combinations):
             combo_type = "Trío" if combo["type"] == "trio" else "Seguidilla"
@@ -272,23 +272,25 @@ class UI:
 
 
     def draw_local_player_combinations(self, player, base_y):
-        """Dibuja las combinaciones bajadas del jugador local debajo de su mano"""
+        """Dibuja las combinaciones bajadas del jugador local debajo de su mano con mejor separación"""
         title = self.font.render("Cartas bajadas:", True, TEXT_COLOR)
         self.screen.blit(title, (20, base_y + CARD_HEIGHT + 20))
 
-        combo_spacing = 35  # Espacio vertical entre combinaciones
-        card_spacing = 25   # Espacio horizontal entre mini-cards
+        combo_spacing_y = 45
+        card_spacing_x = 32
+        label_offset_x = 20
+        cards_start_x = 140
 
         for i, combo in enumerate(player.combinations):
-            combo_type = "Trío" if combo["type"] == "trio" else "Seguidilla"
-            label = self.font.render(combo_type, True, TEXT_COLOR)
-            combo_y = base_y + CARD_HEIGHT + 50 + i * combo_spacing
-            self.screen.blit(label, (30, combo_y))
+            label_text = "Trío" if combo["type"] == "trio" else "Seguidilla"
+            label = self.font.render(label_text + ":", True, TEXT_COLOR)
+
+            y = base_y + CARD_HEIGHT + 50 + i * combo_spacing_y
+            self.screen.blit(label, (label_offset_x, y))
 
             for j, card in enumerate(combo["cards"]):
-                mini_x = 130 + j * card_spacing
-                mini_y = combo_y
-                self.draw_mini_card(card, mini_x, mini_y)
+                x = cards_start_x + j * card_spacing_x
+                self.draw_mini_card(card, x, y)
 
     def draw_card(self, card, x, y, scale=1.0):
         """Dibuja una carta con un factor de escala"""
@@ -343,11 +345,9 @@ class UI:
             ))
 
         return card_rect
-
-
     
     def draw_mini_card(self, card, x, y):
-        """Dibuja una versión más grande de la carta miniatura (para combinaciones)"""
+        """Dibuja una versión miniatura de una carta"""
         # Colores base según el palo
         if card.is_joker:
             card_color = (200, 200, 0)
@@ -368,16 +368,13 @@ class UI:
             card_color = (255, 255, 255)
             text_color = (0, 0, 0)
 
-        # NUEVO tamaño más grande
-        mini_width = 30 if len(card.value) > 1 else 25
-        mini_height = 40
-
+        mini_width = 25
+        mini_height = 34
         card_rect = pygame.Rect(x, y, mini_width, mini_height)
-        pygame.draw.rect(self.screen, card_color, card_rect, border_radius=3)
-        pygame.draw.rect(self.screen, (0, 0, 0), card_rect, 1, border_radius=3)
+        pygame.draw.rect(self.screen, card_color, card_rect, border_radius=2)
+        pygame.draw.rect(self.screen, (0, 0, 0), card_rect, 1, border_radius=2)
 
-        # Texto más grande
-        mini_font = pygame.font.SysFont(None, 16)
+        mini_font = pygame.font.SysFont(None, 18)
         if card.is_joker:
             mini_text = mini_font.render("J", True, text_color)
         else:
@@ -388,6 +385,7 @@ class UI:
             (x + mini_width // 2 - mini_text.get_width() // 2,
             y + mini_height // 2 - mini_text.get_height() // 2)
         )
+
     
     def draw_action_buttons(self, game):
         """Dibuja los botones de acción"""
@@ -512,11 +510,19 @@ class UI:
                 self.selected_player, self.selected_combination = valid_combos[0]
                 add_to_combination_rect = pygame.Rect(start_x, start_y, button_width, button_height)
                 pygame.draw.rect(self.screen, BUTTON_COLOR, add_to_combination_rect, border_radius=5)
-                add_to_combination_text = self.font.render("Añadir a la combinación", True, TEXT_COLOR)
-                self.screen.blit(add_to_combination_text,(add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,
-                                                          add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
+
+                # Usar fuente más pequeña para que el texto quepa
+                small_font = pygame.font.SysFont(None, 21)
+                add_to_combination_text = small_font.render("Añadir a combinación", True, TEXT_COLOR)
+
+                self.screen.blit(
+                    add_to_combination_text,
+                    (add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,
+                    add_to_combination_rect.centery - add_to_combination_text.get_height() // 2)
+                )
                 self.action_buttons.append(("add_to_combo", add_to_combination_rect))
                 print(f"[DEBUG] action_buttons: {self.action_buttons}")
+
     def draw_status_message(self, game):
         """Dibuja un mensaje de estado"""
         message = ""

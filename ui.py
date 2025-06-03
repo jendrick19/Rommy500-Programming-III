@@ -96,12 +96,11 @@ class UI:
 
         # Márgenes y alturas de fila
         margin = 100
-        y1 = 80
-        y2 = 200  # segunda fila, justo encima de tu mano
+        y1 = SCREEN_HEIGHT - 400  # justo encima de las cartas del jugador local  # segunda fila, justo encima de tu mano
 
         # Cuántos en la primera y en la segunda
-        row1 = math.ceil(others / 2)
-        row2 = others - row1
+        row1 = others
+        row2 = 0
 
         # Ancho aprovechable
         avail = SCREEN_WIDTH - 2 * margin

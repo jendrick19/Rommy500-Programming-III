@@ -40,11 +40,7 @@ class Player:
         return self._has_trio() or self._has_sequence()
 
     def lay_down(self, round_num):
-        """Baja todas las combinaciones posibles en la mano"""
         laid_down = False
-        initial_trios = self.trios_laid_down
-        initial_sequences = self.sequences_laid_down
-        
         # Bajar todos los tríos posibles
         while self._has_trio():
             trio = self._get_trio()
@@ -54,22 +50,45 @@ class Player:
                     self.remove_from_hand(card)
                 self.trios_laid_down += 1
                 laid_down = True
-        
-        # Bajar todas las seguidillas posibles
-        while self._has_sequence():
-            sequence = self._get_sequence()
-            if sequence:
-                self.combinations.append({"type": "sequence", "cards": sequence})
-                for card in sequence:
-                    self.remove_from_hand(card)
-                self.sequences_laid_down += 1
-                laid_down = True
+
+        # Detectar todas las posibles seguidillas antes de bajarlas
+        all_sequences = self.detect_seguidillas()
+        # Limitar bajada de seguidillas a máximo 4 cartas si hay más de una posible o alguna de 5+ cartas
+        used_cards = set()
+        seguidillas_bajadas = 0
+        while True:
+            # Buscar la siguiente seguidilla posible con las cartas restantes en mano
+            possible_sequences = []
+            for seq in all_sequences:
+                # Solo considerar secuencias que no usen cartas ya bajadas
+                if all(card in self.hand and card not in used_cards for card in seq):
+                    possible_sequences.append(seq)
+            if not possible_sequences:
+                break
+
+            # Si hay más de una posible o alguna de 5+ cartas, limitar a 4 cartas
+            limit = 4 if len(possible_sequences) > 1 or any(len(seq) > 4 for seq in possible_sequences) else None
+            # Seleccionar la secuencia más larga (o la primera)
+            sequence = max(possible_sequences, key=len)
+            if limit and len(sequence) > limit:
+                sequence = sequence[:limit]
+
+            self.combinations.append({"type": "sequence", "cards": sequence})
+            for card in sequence:
+                self.remove_from_hand(card)
+                used_cards.add(card)
+            self.sequences_laid_down += 1
+            laid_down = True
+            seguidillas_bajadas += 1
+
+            # Actualizar all_sequences para la próxima iteración
+            all_sequences = self.detect_seguidillas()
 
         # Verificar si cumplió el requisito mínimo de la ronda
         if not self.has_completed_round_requirement:
             total_trios = self.trios_laid_down
             total_sequences = self.sequences_laid_down
-            
+
             if round_num == 0:  # Ronda 1: Un Trío y Una Seguidilla
                 if total_trios >= 1 and total_sequences >= 1:
                     self.has_completed_round_requirement = True
@@ -90,7 +109,7 @@ class Player:
         if laid_down:
             self.has_laid_down = True
             print(f"Jugador {self.id + 1} se bajó. Cartas restantes: {len(self.hand)}, Requisito cumplido: {self.has_completed_round_requirement}")
-        
+
         return laid_down
 
     def can_add_to_combination(self, card, combination_idx, player_idx=None):

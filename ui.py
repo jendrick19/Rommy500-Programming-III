@@ -10,6 +10,7 @@ class UI:
         self.card_font = card_font or pygame.font.SysFont(None, 32)
         self.info_font = pygame.font.SysFont("dejavusans", 24, bold=True)
         self.selected_card = None
+        self.selected_card_idx = None
         self.selected_combination = None
         self.selected_player = None
         self.action_buttons = []
@@ -241,7 +242,7 @@ class UI:
             card_x = hand_x + i * (CARD_WIDTH + card_spacing)
             card_y = hand_y
             # Si está seleccionada, subirla
-            if i == self.selected_card:
+            if i == self.selected_card_idx:
                 card_y -= 20  # Sube la carta 20 píxeles
                 pygame.draw.rect(self.screen, (255, 255, 0), 
                                 (card_x - 5, card_y - 5, CARD_WIDTH + 10, CARD_HEIGHT + 10), 3, border_radius=5)
@@ -379,10 +380,6 @@ class UI:
         player = game.players[game.player_id]
         current_offer_state = (game.discard_offer, game.discard_offered_to, game.player_id, player.is_mano)
         if current_offer_state != getattr(self, "_last_offer_state", None):
-            print(f"[UI] ¿Mostrar botones? discard_offer={game.discard_offer}, "
-                f"discard_offered_to={game.discard_offered_to}, "
-                f"player_id={game.player_id}, "
-                f"is_mano={player.is_mano}")
             self._last_offer_state = current_offer_state
         button_width = 150
         button_height = 40
@@ -390,7 +387,7 @@ class UI:
         start_x = SCREEN_WIDTH - button_width - 20
         start_y = 20
         font = pygame.font.SysFont("dejavusans", 18, bold=True)
-
+        show_lay_down = False
         # Fase de oferta inicial de descarte
         if game.discard_offer:
             # Solo mostrar botones al jugador al que se le está ofreciendo la carta
@@ -406,44 +403,52 @@ class UI:
                     self.screen.blit(take_penalty_text, (take_penalty_rect.centerx - take_penalty_text.get_width() // 2,
                                                         take_penalty_rect.centery - take_penalty_text.get_height() // 2))
                     self.action_buttons.append(("take_discard_penalty", take_penalty_rect))
-                    print(f"[DEBUG] Mostrando botón de penalización a jugador {game.player_id}")
-
                     reject_rect = pygame.Rect(start_x, start_y + button_height + button_spacing, button_width, button_height)
                     pygame.draw.rect(self.screen, BUTTON_COLOR, reject_rect, border_radius=5)
                     reject_text = font.render("Rechazar Descarte", True, (255, 255, 255))
                     self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2,
                                                 reject_rect.centery - reject_text.get_height() // 2))
                     self.action_buttons.append(("reject_discard", reject_rect))
-                    print(f"[DEBUG] Mostrando botón de rechazar descarte a jugador {game.player_id}")
                 return  # Si no es el jugador al que se le ofrece, no mostrar botones
         
         # Si es el turno del jugador local (no en fase de oferta)
         elif game.current_player_idx == game.player_id:
+            
             # Si no ha tomado carta aún
             if not player.took_discard and not player.took_penalty:
-                # Mostrar botones iniciales para el jugador MANO
+                if (
+                        not game.discard_offer and
+                        game.current_player_idx == game.player_id and
+                        game.discard_origin_player == game.player_id and
+                        not player.took_discard and
+                        not player.took_penalty
+                    ):
+                    # NO mostrar botón "Tomar del Descarte"
+                    pass
+                else:
+                    # botón "Rechazar Descarte"
+                    reject_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
+                    pygame.draw.rect(self.screen, BUTTON_COLOR, reject_rect, border_radius=5)
+                    reject_text = font.render("Rechazar Descarte", True, (255, 255, 255))
+                    self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2,
+                                                reject_rect.centery - reject_text.get_height() // 2))
+                    self.action_buttons.append(("reject_discard", reject_rect))
+                    # Botón para tomar del descarte
+                    draw_discard_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 2, button_width, button_height)
+                    pygame.draw.rect(self.screen, BUTTON_COLOR, draw_discard_rect, border_radius=5)
+                    draw_discard_text = font.render("Tomar del Descarte", True, (255, 255, 255))
+                    self.screen.blit(draw_discard_text, (draw_discard_rect.centerx - draw_discard_text.get_width() // 2,
+                                                        draw_discard_rect.centery - draw_discard_text.get_height() // 2))
+                    self.action_buttons.append(("draw_discard", draw_discard_rect))
+
+                # Mostrar botón "Tomar del mazo"
                 draw_deck_rect = pygame.Rect(start_x, start_y, button_width, button_height)
                 pygame.draw.rect(self.screen, BUTTON_COLOR, draw_deck_rect, border_radius=5)
                 draw_deck_text = font.render("Tomar del mazo", True, (255, 255, 255))
-                self.screen.blit(draw_deck_text, (draw_deck_rect.centerx - draw_deck_text.get_width() // 2, 
+                self.screen.blit(draw_deck_text, (draw_deck_rect.centerx - draw_deck_text.get_width() // 2,
                                                 draw_deck_rect.centery - draw_deck_text.get_height() // 2))
                 self.action_buttons.append(("draw_deck", draw_deck_rect))
 
-                # Botón para tomar del descarte
-                draw_discard_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 2, button_width, button_height)
-                pygame.draw.rect(self.screen, BUTTON_COLOR, draw_discard_rect, border_radius=5)
-                draw_discard_text = font.render("Tomar del Descarte", True, (255, 255, 255))
-                self.screen.blit(draw_discard_text, (draw_discard_rect.centerx - draw_discard_text.get_width() // 2, 
-                                                draw_discard_rect.centery - draw_discard_text.get_height() // 2))
-                self.action_buttons.append(("draw_discard", draw_discard_rect))
-
-                # Botón para rechazar descarte
-                reject_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
-                pygame.draw.rect(self.screen, BUTTON_COLOR, reject_rect, border_radius=5)
-                reject_text = font.render("Rechazar Descarte", True, (255, 255, 255))
-                self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2, 
-                                            reject_rect.centery - reject_text.get_height() // 2))
-                self.action_buttons.append(("reject_discard", reject_rect))
             # Si el jugador ya tomó una carta
             else:
                 # Botón para bajarse (si puede)
@@ -457,32 +462,37 @@ class UI:
                     if not player.has_laid_down and player.can_lay_down(game.round_num):
                         show_lay_down = True
 
-                if show_lay_down:
-                    lay_down_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 2, button_width, button_height)
-                    pygame.draw.rect(self.screen, BUTTON_COLOR, lay_down_rect, border_radius=5)
-                    lay_down_text = font.render("Bajarse", True, (255, 255, 255))
-                    self.screen.blit(lay_down_text, (lay_down_rect.centerx - lay_down_text.get_width() // 2, 
-                                                    lay_down_rect.centery - lay_down_text.get_height() // 2))
-                    self.action_buttons.append(("lay_down", lay_down_rect))
-                
-                # Botón para descartar (si tiene una carta seleccionada)
-                if self.selected_card is not None:
-                    discard_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
-                    pygame.draw.rect(self.screen, BUTTON_COLOR, discard_rect, border_radius=5)
-                    discard_text = font.render("Descartar", True, (255, 255, 255))
-                    self.screen.blit(discard_text, (discard_rect.centerx - discard_text.get_width() // 2, 
-                                                    discard_rect.centery - discard_text.get_height() // 2))
-                    self.action_buttons.append(("discard", discard_rect))
-                
-                # Botón para añadir a combinación
-                if self.selected_card is not None and self.selected_combination is not None:
-                    add_to_combination_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 4, button_width, button_height)
-                    pygame.draw.rect(self.screen, BUTTON_COLOR, add_to_combination_rect, border_radius=5)
-                    add_to_combination_text = font.render("Añadir a la combinación", True, (255, 255, 255))
-                    self.screen.blit(add_to_combination_text, (add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,
-                                                            add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
-                    self.action_buttons.append(("add_to_combo", add_to_combination_rect))
-
+        if show_lay_down:
+            lay_down_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 2, button_width, button_height)
+            pygame.draw.rect(self.screen, BUTTON_COLOR, lay_down_rect, border_radius=5)
+            lay_down_text = self.font.render("Bajarse", True, TEXT_COLOR)
+            self.screen.blit(lay_down_text, (lay_down_rect.centerx - lay_down_text.get_width() // 2, 
+                                            lay_down_rect.centery - lay_down_text.get_height() // 2))
+            self.action_buttons.append(("lay_down", lay_down_rect))
+        
+        # Botón para descartar
+        if (game.current_player_idx == game.player_id and
+            (player.took_discard or player.took_penalty) and
+            self.selected_card is not None
+            ):
+            discard_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
+            pygame.draw.rect(self.screen, BUTTON_COLOR, discard_rect, border_radius=5)
+            discard_text = self.font.render("Descartar", True, TEXT_COLOR)
+            self.screen.blit(discard_text, (discard_rect.centerx - discard_text.get_width() // 2, 
+                                            discard_rect.centery - discard_text.get_height() // 2))
+            self.action_buttons.append(("discard", discard_rect))
+        # Botón para añadir a combinación
+        if (player.took_discard or player.took_penalty) and self.selected_card_idx is not None:
+            valid_combos = self.get_valid_combinations_for_selected_card(game)
+            if len(valid_combos) == 1:
+                self.selected_player, self.selected_combination = valid_combos[0]
+                add_to_combination_rect = pygame.Rect(start_x, start_y, button_width, button_height)
+                pygame.draw.rect(self.screen, BUTTON_COLOR, add_to_combination_rect, border_radius=5)
+                add_to_combination_text = self.font.render("Añadir a la combinación", True, TEXT_COLOR)
+                self.screen.blit(add_to_combination_text,(add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,
+                                                          add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
+                self.action_buttons.append(("add_to_combo", add_to_combination_rect))
+                print(f"[DEBUG] action_buttons: {self.action_buttons}")
     def draw_status_message(self, game):
         """Dibuja un mensaje de estado"""
         message = ""
@@ -510,20 +520,21 @@ class UI:
     def handle_click(self, pos, game):
         print(f"[DEBUG] Click en posición: {pos}")
         """Maneja los clics del ratón"""
-        # Verificar si se hizo clic en un botón de acción
+        # 1. Verificar si se hizo clic en un botón
         for action, rect in self.action_buttons:
             print(f"[DEBUG] Probando botón {action} en {rect}")
             if rect.collidepoint(pos):
-                print(f"[DEBUG] Acción detectada: {action}")
+                print(f"[DEBUG] Botón '{action}' presionado")
                 self.handle_action(action, game)
                 return
 
-        # Verificar que el ID del jugador es válido
+        # 2. Validar jugador actual
         if game.player_id < 0 or game.player_id >= len(game.players):
             return
 
-        # Selección de carta de la mano del jugador local
         player = game.players[game.player_id]
+
+        # 3. Verificar si se hizo clic en una carta de la mano
         hand_x = 20
         base_y = SCREEN_HEIGHT - 280
         hand_y = base_y + 60
@@ -535,81 +546,97 @@ class UI:
             card_rect = pygame.Rect(card_x, card_y, CARD_WIDTH, CARD_HEIGHT)
             if card_rect.collidepoint(pos):
                 self.selected_card = i
-                # Si ya hay una combinación seleccionada, intentar añadir la carta
+                self.selected_card_idx = i
+                # ¿Ya hay una combinación seleccionada?
                 if self.selected_combination is not None and self.selected_player is not None:
                     self.handle_action("add_to_combo", game)
                 return
 
-        # Selección de combinaciones de cualquier jugador
+        # 4. Verificar si se hizo clic en una combinación en mesa
         for pid, p in enumerate(game.players):
             for cidx in range(len(p.combinations)):
                 combo_rect = self.get_combination_rect(pid, cidx, game)
                 if combo_rect.collidepoint(pos):
+                    print(f"[DEBUG] Combinación seleccionada: Jugador {pid}, Combo {cidx}")
                     self.selected_combination = cidx
                     self.selected_player = pid
-                    if self.selected_card is not None:
+                    if self.selected_card_idx is not None:
                         self.handle_action("add_to_combo", game)
                     return
 
-        # Si no se hizo clic en nada relevante, limpiar selección
+        # 5. Si no se hizo clic en nada relevante, limpiar selección
         self.selected_card = None
+        self.selected_card_idx = None
         self.selected_combination = None
         self.selected_player = None
 
-    def handle_action(self, action, game):
-        if action == "draw_deck":
-            game.take_card_from_deck()
-            game.update()
-        elif action == "draw_discard":
-            # Tomar del descarte sin penalización (para el jugador MANO)
-            game.take_card_from_discard(is_penalty=False)
-            game.update()
-        elif action == "take_discard_penalty":
-            # Tomar del descarte con penalización (para otros jugadores)
-            game.take_card_from_discard(is_penalty=True)
-            game.update()
-        elif action == "reject_discard":
-            # Iniciar/continuar la oferta de descarte
-            if game.current_player_idx == game.player_id:
-                print(f"[UI] Jugador {game.player_id} rechaza el descarte")
-                # Enviar acción al juego
-                game.reject_discard_offer()
-                # Forzar actualización del estado
-                if game.network.is_host():
-                    game.discard_offer = True
-                    game.rejected_discard = [game.current_player_idx]
-                    game.discard_offered_to = (game.current_player_idx + 1) % len(game.players)
-                    game.discard_origin_player = game.current_player_idx
-                    print(f"[UI] Iniciando oferta. Siguiente jugador: {game.discard_offered_to}")
-                    game.network.send_game_state(game.to_dict())
-            else:
-                # Si no es el jugador MANO, solo rechazar
-                game.reject_discard_offer()
-            game.update()
-        elif action == "lay_down":
-            game.lay_down_combination()
-            game.update()
-        elif action == "discard" and self.selected_card is not None:
-            game.discard_card(self.selected_card)
-            self.selected_card = None
-            game.update()
-        elif action == "next_round":
-            if game.network.is_host():
-                game.start_new_round()
-                game.update()
-        elif action == "add_to_combo" and self.selected_card is not None and self.selected_combination is not None and self.selected_player is not None:
-            game.add_to_combination(
-                self.selected_card,
-                self.selected_combination,
-                self.selected_player
-            )
-            self.selected_card = None
-            game.update()
-        
-        # Si es host, enviar el estado actualizado
-        if game.network.is_host():
-            game.network.send_game_state(game.to_dict())
 
+    def handle_action(self, action, game):
+        try:
+            if action == "draw_deck":
+                game.take_card_from_deck()
+                game.update()
+            elif action == "draw_discard":
+                # Tomar del descarte sin penalización (para el jugador MANO)
+                game.take_card_from_discard(is_penalty=False)
+                game.update()
+            elif action == "take_discard_penalty":
+                # Tomar del descarte con penalización (para otros jugadores)
+                game.take_card_from_discard(is_penalty=True)
+                game.update()
+            elif action == "reject_discard":
+                # Iniciar/continuar la oferta de descarte
+                if game.current_player_idx == game.player_id:
+                    # Enviar acción al juego
+                    game.reject_discard_offer()
+                    # Forzar actualización del estado
+                    if game.network.is_host():
+                        game.discard_offer = True
+                        game.rejected_discard = [game.current_player_idx]
+                        game.discard_offered_to = (game.current_player_idx + 1) % len(game.players)
+                        game.discard_origin_player = game.current_player_idx
+                        game.network.send_game_state(game.to_dict())
+                else:
+                    # Si no es el jugador MANO, solo rechazar
+                    game.reject_discard_offer()
+                game.update()
+            elif action == "lay_down":
+                game.lay_down_combination()
+                game.update()
+            elif action == "discard" and self.selected_card is not None:
+                game.discard_card(self.selected_card)
+                self.selected_card = None
+                game.update()
+            elif action == "next_round":
+                if game.network.is_host():
+                    game.start_new_round()
+                    game.update()
+            elif action == "add_to_combo":
+                try:
+                    if self.selected_card_idx is None or self.selected_player is None or self.selected_combination is None:
+                        return
+
+                    local_player = game.players[game.player_id]
+                    if self.selected_card_idx >= len(local_player.hand):
+                        return
+
+                    card = local_player.hand[self.selected_card_idx]
+                    valid = game.can_add_to_combination(card, self.selected_combination, self.selected_player)
+
+                    if not valid:
+                        return
+                    added = game.add_to_combination(self.selected_card_idx, self.selected_combination, self.selected_player)
+                    if added:
+                        self.selected_card = None
+                        self.selected_card_idx = None
+                        self.selected_combination = None
+                        self.selected_player = None
+                except Exception as e:
+                    print(f"[EXCEPTION] Error en add_to_combo: {e}")            
+        except Exception as e:
+            print(f"[EXCEPTION] Error en handle_action({action}): {e}")
+        finally:
+            game.update()
 
     def animate_deal(self, game):
         """Animación de reparto de cartas a todos los jugadores antes de que aparezcan en la mano"""
@@ -763,3 +790,23 @@ class UI:
             self.screen.blit(btn_text, (next_button_rect.centerx - btn_text.get_width() // 2, next_button_rect.centery - btn_text.get_height() // 2))
             self.action_buttons = [("next_round", next_button_rect)]
         pygame.display.flip()
+
+    def get_valid_combinations_for_selected_card(self, game):
+        if self.selected_card_idx is None:
+            return []
+
+        local_player = game.players[game.player_id]
+
+        # Validar que el índice está dentro del rango actual
+        if self.selected_card_idx >= len(local_player.hand):
+            return []
+
+        card = local_player.hand[self.selected_card_idx]
+
+        valid_targets = []
+        for p_idx, player in enumerate(game.players):
+            for c_idx, combo in enumerate(player.combinations):
+                if game.can_add_to_combination(card, c_idx, p_idx):
+                    valid_targets.append((p_idx, c_idx))
+        return valid_targets
+

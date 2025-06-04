@@ -152,7 +152,7 @@ class UI:
                 self.font.render(f"Cartas: {len(player.hand)}", True, TEXT_COLOR),
                 (x, y + 50)
             )
-            estado = "Bajado" if player.has_laid_down else "No bajado"
+            estado = "Bajado" if player.has_laid_down else ""
             self.screen.blit(
                 self.font.render(estado, True, TEXT_COLOR),
                 (x, y + 75)
@@ -161,22 +161,23 @@ class UI:
             # Combos bajados
             self.draw_player_combinations(player, x, y + 100)
 
-
-    
     def draw_player_combinations(self, player, x, y):
-        """Dibuja las combinaciones de un jugador"""
+        """Dibuja las combinaciones de un jugador con separación entre cartas y alineado"""
+        combo_spacing = 35  # Espacio vertical entre combinaciones
+        card_spacing = 28   # Espacio horizontal entre mini-cards
+
         for i, combo in enumerate(player.combinations):
             combo_type = "Trío" if combo["type"] == "trio" else "Seguidilla"
-            combo_text = f"{combo_type}: "
+            combo_text = f"{combo_type}:"
             combo_surface = self.font.render(combo_text, True, TEXT_COLOR)
-            self.screen.blit(combo_surface, (x, y + i * 25))
-            
-            # Dibujar cartas en miniatura
+            combo_y = y + i * combo_spacing
+            self.screen.blit(combo_surface, (x, combo_y))
+
             for j, card in enumerate(combo["cards"]):
-                mini_x = x + 80 + j * 20
-                mini_y = y + i * 25
+                mini_x = x + 100 + j * card_spacing  # separa del texto con +100
+                mini_y = combo_y
                 self.draw_mini_card(card, mini_x, mini_y)
-    
+
     def draw_player_hand(self, game):
         """Dibuja la mano del jugador local"""
         # Verificar que el ID del jugador es válido
@@ -270,105 +271,120 @@ class UI:
 
 
     def draw_local_player_combinations(self, player, base_y):
-        """Dibuja las combinaciones bajadas del jugador local debajo de su mano"""
+        """Dibuja las combinaciones bajadas del jugador local debajo de su mano con mejor separación"""
         title = self.font.render("Cartas bajadas:", True, TEXT_COLOR)
         self.screen.blit(title, (20, base_y + CARD_HEIGHT + 20))
-    
+
+        combo_spacing_y = 45
+        card_spacing_x = 32
+        label_offset_x = 20
+        cards_start_x = 140
+
         for i, combo in enumerate(player.combinations):
-            label = self.font.render("Trío" if combo["type"] == "trio" else "Seguidilla", True, TEXT_COLOR)
-            self.screen.blit(label, (20, base_y + CARD_HEIGHT + 50 + i * 40))
+            label_text = "Trío" if combo["type"] == "trio" else "Seguidilla"
+            label = self.font.render(label_text + ":", True, TEXT_COLOR)
+
+            y = base_y + CARD_HEIGHT + 50 + i * combo_spacing_y
+            self.screen.blit(label, (label_offset_x, y))
 
             for j, card in enumerate(combo["cards"]):
-                x = 120 + j * 30
-                y = base_y + CARD_HEIGHT + 50 + i * 40
+                x = cards_start_x + j * card_spacing_x
                 self.draw_mini_card(card, x, y)
 
-    
-    def draw_card(self, card, x, y):
-        """Dibuja una carta"""
+    def draw_card(self, card, x, y, scale=1.0):
+        """Dibuja una carta con un factor de escala"""
+
         # Colores base según el palo
         if card.is_joker:
             card_color = (200, 200, 0)  # Amarillo para Jokers
             text_color = (0, 0, 0)
         elif card.suit == '♦':
-            card_color = (255, 255, 100)  # Amarillo para diamantes
+            card_color = (255, 255, 100)
             text_color = (180, 140, 0)
         elif card.suit == '♣':
-            card_color = (180, 220, 255)  # Azul claro para tréboles
+            card_color = (180, 220, 255)
             text_color = (0, 60, 180)
         elif card.suit == '♠':
-            card_color = (220, 220, 220)  # Gris claro para picas (fondo)
-            text_color = (0, 0, 0)        # Negro para texto
+            card_color = (220, 220, 220)
+            text_color = (0, 0, 0)
         elif card.suit == '♥':
-            card_color = (255, 200, 200)  # Rojo claro para corazones
+            card_color = (255, 200, 200)
             text_color = (150, 0, 0)
         else:
             card_color = (255, 255, 255)
             text_color = (0, 0, 0)
 
-    # Rectángulo principal
-        card_rect = pygame.Rect(x, y, CARD_WIDTH, CARD_HEIGHT)
+        # Dimensiones escaladas
+        width = int(CARD_WIDTH * scale)
+        height = int(CARD_HEIGHT * scale)
+
+        # Dibujar la carta
+        card_rect = pygame.Rect(x, y, width, height)
         pygame.draw.rect(self.screen, card_color, card_rect, border_radius=5)
         pygame.draw.rect(self.screen, (0, 0, 0), card_rect, 2, border_radius=5)
 
+        # Dibujar contenido
         if card.is_joker:
-            # 🃏 centrado
             joker_text = self.card_font.render("🃏", True, text_color)
             self.screen.blit(
-                joker_text, 
-                (x + CARD_WIDTH // 2 - joker_text.get_width() // 2,
-                 y + CARD_HEIGHT // 2 - joker_text.get_height() // 2)
+                joker_text,
+                (x + width // 2 - joker_text.get_width() // 2,
+                y + height // 2 - joker_text.get_height() // 2)
             )
         else:
-            # Esquinas
             value_text = self.card_font.render(card.value, True, text_color)
             suit_text = self.card_font.render(card.suit, True, text_color)
-        
-            # Superior izquierda (valor)
+
+            # Superior izquierda
             self.screen.blit(value_text, (x + 5, y + 3))
-            # Inferior derecha (palo)
+            # Inferior derecha
             self.screen.blit(suit_text, (
-                x + CARD_WIDTH - suit_text.get_width() - 5,
-                y + CARD_HEIGHT - suit_text.get_height() - 5
+                x + width - suit_text.get_width() - 5,
+                y + height - suit_text.get_height() - 5
             ))
 
+        return card_rect
     
     def draw_mini_card(self, card, x, y):
         """Dibuja una versión miniatura de una carta"""
         # Colores base según el palo
         if card.is_joker:
-            card_color = (200, 200, 0)  # Amarillo para Jokers
+            card_color = (200, 200, 0)
             text_color = (0, 0, 0)
         elif card.suit == '♦':
-            card_color = (255, 255, 100)  # Amarillo para diamantes
+            card_color = (255, 255, 100)
             text_color = (180, 140, 0)
         elif card.suit == '♣':
-            card_color = (180, 220, 255)  # Azul claro para tréboles
+            card_color = (180, 220, 255)
             text_color = (0, 60, 180)
         elif card.suit == '♠':
-            card_color = (220, 220, 220)  # Gris claro para picas (fondo)
+            card_color = (220, 220, 220)
             text_color = (0, 0, 0)
         elif card.suit == '♥':
-            card_color = (255, 200, 200)  # Rojo claro para corazones
+            card_color = (255, 200, 200)
             text_color = (150, 0, 0)
         else:
             card_color = (255, 255, 255)
             text_color = (0, 0, 0)
 
-        mini_width = 20 if len(card.value) > 1 else 15
-        mini_height = 20
+        mini_width = 25
+        mini_height = 34
         card_rect = pygame.Rect(x, y, mini_width, mini_height)
         pygame.draw.rect(self.screen, card_color, card_rect, border_radius=2)
         pygame.draw.rect(self.screen, (0, 0, 0), card_rect, 1, border_radius=2)
-        
-        # Dibujar texto miniatura
-        mini_font = pygame.font.SysFont(None, 12)
+
+        mini_font = pygame.font.SysFont(None, 18)
         if card.is_joker:
             mini_text = mini_font.render("J", True, text_color)
         else:
             mini_text = mini_font.render(card.value, True, text_color)
-        self.screen.blit(mini_text, (x + mini_width // 2 - mini_text.get_width() // 2, 
-                                    y + mini_height // 2 - mini_text.get_height() // 2))
+
+        self.screen.blit(
+            mini_text,
+            (x + mini_width // 2 - mini_text.get_width() // 2,
+            y + mini_height // 2 - mini_text.get_height() // 2)
+        )
+
     
     def draw_action_buttons(self, game):
         """Dibuja los botones de acción"""
@@ -427,20 +443,25 @@ class UI:
                     pass
                 else:
                     # botón "Rechazar Descarte"
-                    reject_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
-                    pygame.draw.rect(self.screen, BUTTON_COLOR, reject_rect, border_radius=5)
-                    reject_text = font.render("Rechazar Descarte", True, (255, 255, 255))
-                    self.screen.blit(reject_text, (reject_rect.centerx - reject_text.get_width() // 2,
-                                                reject_rect.centery - reject_text.get_height() // 2))
-                    self.action_buttons.append(("reject_discard", reject_rect))
+                    reject_discard_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 3, button_width, button_height)
+                    pygame.draw.rect(self.screen, BUTTON_COLOR, reject_discard_rect, border_radius=5)
+
+                    reject_discard_text = self._render_fitting_text("Rechazar descarte", reject_discard_rect)
+                    self.screen.blit(reject_discard_text, (
+                        reject_discard_rect.centerx - reject_discard_text.get_width() // 2,
+                        reject_discard_rect.centery - reject_discard_text.get_height() // 2
+                    ))
+                    self.action_buttons.append(("reject_discard", reject_discard_rect))
                     # Botón para tomar del descarte
                     draw_discard_rect = pygame.Rect(start_x, start_y + (button_height + button_spacing) * 2, button_width, button_height)
                     pygame.draw.rect(self.screen, BUTTON_COLOR, draw_discard_rect, border_radius=5)
-                    draw_discard_text = font.render("Tomar del Descarte", True, (255, 255, 255))
-                    self.screen.blit(draw_discard_text, (draw_discard_rect.centerx - draw_discard_text.get_width() // 2,
-                                                        draw_discard_rect.centery - draw_discard_text.get_height() // 2))
-                    self.action_buttons.append(("draw_discard", draw_discard_rect))
 
+                    draw_discard_text = self._render_fitting_text("Tomar del Descarte", draw_discard_rect)
+                    self.screen.blit(draw_discard_text, (
+                        draw_discard_rect.centerx - draw_discard_text.get_width() // 2,
+                        draw_discard_rect.centery - draw_discard_text.get_height() // 2
+                    ))
+                    self.action_buttons.append(("draw_discard", draw_discard_rect))
                 # Mostrar botón "Tomar del mazo"
                 draw_deck_rect = pygame.Rect(start_x, start_y, button_width, button_height)
                 pygame.draw.rect(self.screen, BUTTON_COLOR, draw_deck_rect, border_radius=5)
@@ -488,11 +509,19 @@ class UI:
                 self.selected_player, self.selected_combination = valid_combos[0]
                 add_to_combination_rect = pygame.Rect(start_x, start_y, button_width, button_height)
                 pygame.draw.rect(self.screen, BUTTON_COLOR, add_to_combination_rect, border_radius=5)
-                add_to_combination_text = self.font.render("Añadir a la combinación", True, TEXT_COLOR)
-                self.screen.blit(add_to_combination_text,(add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,
-                                                          add_to_combination_rect.centery - add_to_combination_text.get_height() // 2))
+
+                # Usar fuente más pequeña para que el texto quepa
+                small_font = pygame.font.SysFont(None, 21)
+                add_to_combination_text = small_font.render("Añadir a combinación", True, TEXT_COLOR)
+
+                self.screen.blit(
+                    add_to_combination_text,
+                    (add_to_combination_rect.centerx - add_to_combination_text.get_width() // 2,
+                    add_to_combination_rect.centery - add_to_combination_text.get_height() // 2)
+                )
                 self.action_buttons.append(("add_to_combo", add_to_combination_rect))
                 print(f"[DEBUG] action_buttons: {self.action_buttons}")
+
     def draw_status_message(self, game):
         """Dibuja un mensaje de estado"""
         message = ""
@@ -809,4 +838,18 @@ class UI:
                 if game.can_add_to_combination(card, c_idx, p_idx):
                     valid_targets.append((p_idx, c_idx))
         return valid_targets
+    
+    def _render_fitting_text(self, text, rect, base_size=24):
+        """Renderiza texto que se ajusta al ancho del rectángulo dado"""
+        font_size = base_size
+        font = pygame.font.SysFont(None, font_size)
+        rendered = font.render(text, True, TEXT_COLOR)
+
+        while (rendered.get_width() > rect.width - 10 or rendered.get_height() > rect.height - 4) and font_size > 10:
+            font_size -= 1
+            font = pygame.font.SysFont(None, font_size)
+            rendered = font.render(text, True, TEXT_COLOR)
+        
+        return rendered
+
 

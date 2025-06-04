@@ -383,34 +383,23 @@ class Game:
         return True
     
     def add_to_combination(self, card_idx, combination_idx, player_idx=None, actor_idx=None):
-        print(f"[DEBUG] add_to_combination llamado con card_idx={card_idx}, combination_idx={combination_idx}, player_idx={player_idx}")
 
         if actor_idx is None:
             actor_idx = self.player_id
         local_player = self.players[actor_idx]
         target_player = self.players[player_idx if player_idx is not None else actor_idx]
         target_player_idx = player_idx if player_idx is not None else actor_idx
-
-        print(f"[DEBUG] local_player.id={local_player.id}, target_player.id={target_player.id}, target_player_idx={target_player_idx}")
-        print(f"[DEBUG] Mano del jugador local antes: {[str(c) for c in local_player.hand]}")
-        print(f"[DEBUG] Combinaciones del jugador objetivo antes: {[[str(c) for c in combo['cards']] for combo in target_player.combinations]}")
-
         # Validar índices
         if card_idx < 0 or card_idx >= len(local_player.hand):
-            print(f"[ERROR] Índice de carta inválido: {card_idx} para mano de tamaño {len(local_player.hand)}")
             return False
         if combination_idx < 0 or combination_idx >= len(target_player.combinations):
-            print(f"[ERROR] Índice de combinación inválido: {combination_idx} para combinaciones de tamaño {len(target_player.combinations)}")
             return False
 
         card = local_player.hand[card_idx]
-        print(f"[DEBUG] Intentando agregar carta: {card} a combinación {combination_idx} del jugador {target_player.id}")
 
         # Validar si la carta puede agregarse usando la función central
         can_add = self.can_add_to_combination(card, combination_idx, target_player_idx)
-        print(f"[DEBUG] Resultado de can_add_to_combination: {can_add}")
         if not can_add:
-            print(f"[INFO] No se puede agregar {card} a combinación {combination_idx} del jugador {target_player.id}")
             return False
 
         replaced_joker = False
@@ -429,7 +418,6 @@ class Game:
                         local_player.remove_from_hand(card)
                         local_player.add_to_hand(joker_card)
                         replaced_joker = True
-                        print(f"[DEBUG] Joker reemplazado por {card}, joker {joker_card} devuelto a la mano del jugador.")
                         break
             if not replaced_joker:
                 # Agregar la carta normalmente (al inicio o final)
@@ -442,7 +430,6 @@ class Game:
                 target_player.combinations[combination_idx]["cards"].append(card)
                 local_player.remove_from_hand(card)
                 replaced_joker = True
-                print(f"[DEBUG] Joker añadido al trío.")
             else:
                 # Reemplazar un joker por una carta real
                 non_joker_values = [cc.value for cc in combo_cards if not cc.is_joker]
@@ -453,33 +440,24 @@ class Game:
                         local_player.remove_from_hand(card)
                         local_player.add_to_hand(joker_card)
                         replaced_joker = True
-                        print(f"[DEBUG] Joker reemplazado por {card} en trío, joker {joker_card} devuelto a la mano del jugador.")
                         break
                 if not replaced_joker:
                     # Agregar la carta normalmente
                     target_player.combinations[combination_idx]["cards"].append(card)
                     local_player.remove_from_hand(card)
-
-        print(f"[DEBUG] Mano del jugador local después: {[str(c) for c in local_player.hand]}")
-        print(f"[DEBUG] Combinaciones del jugador objetivo después: {[[str(c) for c in combo['cards']] for combo in target_player.combinations]}")
-
         # Reordenar si es seguidilla
         if target_player.combinations[combination_idx]["type"] == "sequence":
             target_player.combinations[combination_idx]["cards"].sort(key=lambda c: VALUES.index(c.value))
-            print(f"[DEBUG] Combinación reordenada (secuencia): {[str(c) for c in target_player.combinations[combination_idx]['cards']]}")
 
         # Verificar si ganó la ronda
         if self.check_round_win_condition(local_player):
-            print("[DEBUG] El jugador local ha ganado la ronda tras agregar a combinación.")
             self.end_round(winner_idx=self.current_player_idx)
 
         # Enviar actualización por red
         if self.network.is_host():
-            print("[DEBUG] Enviando estado actualizado a los clientes (host).")
             self.network.send_game_state(self.to_dict())
             return True
         else:
-            print("[DEBUG] Enviando acción de agregar a combinación al host.")
             self.network.send_action({
                 'type': ACTION_ADD_TO_COMBINATION,
                 'player_id': self.player_id,
@@ -490,38 +468,30 @@ class Game:
             return True
 
     def can_add_to_combination(self, card, combination_idx, player_idx):
-        print(f"[DEBUG] can_add_to_combination: card={card}, combination_idx={combination_idx}, player_idx={player_idx}")
         if player_idx < 0 or player_idx >= len(self.players):
-            print(f"[ERROR] player_idx fuera de rango: {player_idx}")
             return False
 
         target_player = self.players[player_idx]
 
         if combination_idx < 0 or combination_idx >= len(target_player.combinations):
-            print(f"[ERROR] combination_idx fuera de rango: {combination_idx}")
             return False
 
         combination = target_player.combinations[combination_idx]
-        print(f"[DEBUG] Combinación objetivo: {[[str(c) for c in combination['cards']]]}, tipo: {combination['type']}")
 
         if combination["type"] == "trio":
             # Permitir agregar joker si hay menos de 4 cartas
             if card.is_joker and len(combination["cards"]) < 4:
-                print(f"[DEBUG] Joker puede ser añadido al trío.")
                 return True
             # Permitir reemplazo de joker por carta real
             non_joker_values = [c.value for c in combination["cards"] if not c.is_joker]
             if non_joker_values and card.value == non_joker_values[0]:
-                print(f"[DEBUG] ¿Es trío válido? True")
                 return True
-            print(f"[DEBUG] ¿Es trío válido? False")
             return False
 
         elif combination["type"] == "sequence":
             # Permitir reemplazo de joker
             suits = [c.suit for c in combination["cards"] if not c.is_joker]
             if suits and not all(s == card.suit for s in suits):
-                print("[DEBUG] Palo no coincide en la secuencia.")
                 return False
 
             indices = [VALUES.index(c.value) if not c.is_joker else None for c in combination["cards"]]
@@ -533,21 +503,17 @@ class Game:
                     left_val = indices[idx - 1] if idx > 0 else None
                     right_val = indices[idx + 1] if idx < len(indices) - 1 else None
                     if (left_val is not None and card_val == left_val + 1) or (right_val is not None and card_val == right_val - 1):
-                        print("[DEBUG] Carta puede reemplazar al joker en la secuencia.")
                         return True
 
             # Si no es reemplazo de joker, ¿puede agregarse al inicio o final?
             non_joker_indices = [i for i in indices if i is not None]
             if not non_joker_indices:
-                print("[DEBUG] No hay valores en la secuencia.")
                 return False
             min_val = min(non_joker_indices)
             max_val = max(non_joker_indices)
             result = card_val == min_val - 1 or card_val == max_val + 1
-            print(f"[DEBUG] ¿Se puede agregar a la secuencia? {result}")
             return result
 
-        print("[DEBUG] Tipo de combinación no soportado.")
         return False
    
     def discard_card(self, card_idx):

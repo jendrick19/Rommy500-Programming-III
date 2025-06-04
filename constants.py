@@ -28,7 +28,7 @@ PLAYER_COLORS = [
 INPUT_ACTIVE_COLOR = (100, 100, 200)
 INPUT_INACTIVE_COLOR = (70, 70, 70)
 
-# Colores adicionales para el menú principal (extraídos de tu main.py anterior)
+# Colores adicionales para el menú principal 
 DARK_BLUE = (30, 60, 150)
 ORANGE = (255, 165, 0)
 LIGHT_BLUE = (60, 90, 180)

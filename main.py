@@ -32,9 +32,9 @@ def main():
     scroll_speed = 20 # Velocidad de desplazamiento con la rueda del ratón
     
     # Fuentes
-    font = pygame.font.SysFont("Arial", 32)
-    title_font = pygame.font.SysFont("Arial", 60, bold=True)
-    small_font = pygame.font.SysFont("Arial", 20)
+    font = pygame.font.SysFont("none", 32)
+    title_font = pygame.font.SysFont("none", 60, bold=True)
+    small_font = pygame.font.SysFont("none", 20)
 
     # NUEVA FUENTE PARA LOS SUBTÍTULOS DE LAS REGLAS
     subtitle_rules_font = pygame.font.SysFont("Arial", 28, bold=True) # Fuente un poco más grande y en negrita para subtítulos

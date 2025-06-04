@@ -36,75 +36,124 @@ class Player:
         return sum(card.points for card in self.hand)
     
     def can_lay_down(self, round_num):
-        # Siempre puede bajarse si tiene un trío o seguidilla
-        return self._has_trio() or self._has_sequence()
+        """Solo permite bajarse si se cumplen exactamente los requisitos de la ronda."""
+        if self.has_completed_round_requirement:
+            # Ya cumplió la bajada obligatoria, puede bajar cualquier trío o seguidilla extra (excepto ronda 4)
+            if round_num == 3:
+                return False  # En ronda 4 no se puede bajar extra, debe quedarse sin cartas
+            return self._has_trio() or self._has_sequence()
+        else:
+            # Debe cumplir la bajada obligatoria de la ronda
+            if round_num == 0:
+                # Ronda 1: Un trío y una seguidilla (ambos a la vez)
+                trios = self._get_trios(1)
+                sequences = self._get_sequences(1)
+                return len(trios) >= 1 and len(sequences) >= 1
+            elif round_num == 1:
+                # Ronda 2: Dos seguidillas (ambas a la vez)
+                sequences = self._get_sequences(2)
+                return len(sequences) >= 2
+            elif round_num == 2:
+                # Ronda 3: Dos tríos (ambos a la vez)
+                trios = self._get_trios(2)
+                return len(trios) >= 2
+            elif round_num == 3:
+                # Ronda 4: Dos tríos y una seguidilla (las 3 combinaciones a la vez)
+                trios = self._get_trios(2)
+                sequences = self._get_sequences(1)
+                return len(trios) >= 2 and len(sequences) >= 1
+        return False
 
     def lay_down(self, round_num):
         laid_down = False
-        # Bajar todos los tríos posibles
-        while self._has_trio():
-            trio = self._get_trio()
-            if trio:
-                self.combinations.append({"type": "trio", "cards": trio})
-                for card in trio:
-                    self.remove_from_hand(card)
-                self.trios_laid_down += 1
-                laid_down = True
 
-        # Detectar todas las posibles seguidillas antes de bajarlas
-        all_sequences = self.detect_seguidillas()
-        # Limitar bajada de seguidillas a máximo 4 cartas si hay más de una posible o alguna de 5+ cartas
-        used_cards = set()
-        seguidillas_bajadas = 0
-        while True:
-            # Buscar la siguiente seguidilla posible con las cartas restantes en mano
-            possible_sequences = []
-            for seq in all_sequences:
-                # Solo considerar secuencias que no usen cartas ya bajadas
-                if all(card in self.hand and card not in used_cards for card in seq):
-                    possible_sequences.append(seq)
-            if not possible_sequences:
-                break
+        # Si ya cumplió la bajada obligatoria, puede bajar cualquier trío o seguidilla extra (excepto ronda 4)
+        if self.has_completed_round_requirement:
+            if round_num == 3:
+                return False  # En ronda 4 no se puede bajar extra, debe quedarse sin cartas
+            # Bajar todos los tríos posibles
+            while self._has_trio():
+                trio = self._get_trio()
+                if trio:
+                    self.combinations.append({"type": "trio", "cards": trio})
+                    for card in trio:
+                        self.remove_from_hand(card)
+                    self.trios_laid_down += 1
+                    laid_down = True
+            # Bajar todas las seguidillas posibles
+            while self._has_sequence():
+                sequence = self._get_sequence()
+                if sequence:
+                    self.combinations.append({"type": "sequence", "cards": sequence})
+                    for card in sequence:
+                        self.remove_from_hand(card)
+                    self.sequences_laid_down += 1
+                    laid_down = True
+            if laid_down:
+                print(f"Jugador {self.id + 1} bajó combinaciones extra. Cartas restantes: {len(self.hand)}")
+            return laid_down
 
-            # Si hay más de una posible o alguna de 5+ cartas, limitar a 4 cartas
-            limit = 4 if len(possible_sequences) > 1 or any(len(seq) > 4 for seq in possible_sequences) else None
-            # Seleccionar la secuencia más larga (o la primera)
-            sequence = max(possible_sequences, key=len)
-            if limit and len(sequence) > limit:
-                sequence = sequence[:limit]
-
-            self.combinations.append({"type": "sequence", "cards": sequence})
-            for card in sequence:
-                self.remove_from_hand(card)
-                used_cards.add(card)
-            self.sequences_laid_down += 1
-            laid_down = True
-            seguidillas_bajadas += 1
-
-            # Actualizar all_sequences para la próxima iteración
-            all_sequences = self.detect_seguidillas()
-
-        # Verificar si cumplió el requisito mínimo de la ronda
-        if not self.has_completed_round_requirement:
-            total_trios = self.trios_laid_down
-            total_sequences = self.sequences_laid_down
-
-            if round_num == 0:  # Ronda 1: Un Trío y Una Seguidilla
-                if total_trios >= 1 and total_sequences >= 1:
-                    self.has_completed_round_requirement = True
-                    print(f"Jugador {self.id + 1} cumplió requisito ronda 1: {total_trios} tríos, {total_sequences} seguidillas")
-            elif round_num == 1:  # Ronda 2: Dos Seguidillas
-                if total_sequences >= 2:
-                    self.has_completed_round_requirement = True
-                    print(f"Jugador {self.id + 1} cumplió requisito ronda 2: {total_sequences} seguidillas")
-            elif round_num == 2:  # Ronda 3: Tres Tríos
-                if total_trios >= 3:
-                    self.has_completed_round_requirement = True
-                    print(f"Jugador {self.id + 1} cumplió requisito ronda 3: {total_trios} tríos")
-            elif round_num == 3:  # Ronda 4: Una Seguidilla y Dos Tríos (Ronda Completa)
-                if total_trios >= 2 and total_sequences >= 1:
-                    self.has_completed_round_requirement = True
-                    print(f"Jugador {self.id + 1} cumplió requisito ronda 4: {total_trios} tríos, {total_sequences} seguidillas")
+        # Bajada obligatoria según la ronda
+        if round_num == 0:
+            trios = self._get_trios(1)
+            sequences = self._get_sequences(1)
+            if len(trios) >= 1 and len(sequences) >= 1:
+                # Bajar el trío
+                for trio in trios[:1]:
+                    self.combinations.append({"type": "trio", "cards": trio})
+                    for card in trio:
+                        self.remove_from_hand(card)
+                    self.trios_laid_down += 1
+                    laid_down = True
+                # Bajar la seguidilla
+                for seq in sequences[:1]:
+                    self.combinations.append({"type": "sequence", "cards": seq})
+                    for card in seq:
+                        self.remove_from_hand(card)
+                    self.sequences_laid_down += 1
+                    laid_down = True
+                self.has_completed_round_requirement = True
+                print(f"Jugador {self.id + 1} cumplió requisito ronda 1: 1 trío, 1 seguidilla")
+        elif round_num == 1:
+            sequences = self._get_sequences(2)
+            if len(sequences) >= 2:
+                for seq in sequences[:2]:
+                    self.combinations.append({"type": "sequence", "cards": seq})
+                    for card in seq:
+                        self.remove_from_hand(card)
+                    self.sequences_laid_down += 1
+                    laid_down = True
+                self.has_completed_round_requirement = True
+                print(f"Jugador {self.id + 1} cumplió requisito ronda 2: 2 seguidillas")
+        elif round_num == 2:
+            trios = self._get_trios(2)
+            if len(trios) >= 2:
+                for trio in trios[:2]:
+                    self.combinations.append({"type": "trio", "cards": trio})
+                    for card in trio:
+                        self.remove_from_hand(card)
+                    self.trios_laid_down += 1
+                    laid_down = True
+                self.has_completed_round_requirement = True
+                print(f"Jugador {self.id + 1} cumplió requisito ronda 3: 2 tríos")
+        elif round_num == 3:
+            trios = self._get_trios(2)
+            sequences = self._get_sequences(1)
+            if len(trios) >= 2 and len(sequences) >= 1:
+                for trio in trios[:2]:
+                    self.combinations.append({"type": "trio", "cards": trio})
+                    for card in trio:
+                        self.remove_from_hand(card)
+                    self.trios_laid_down += 1
+                    laid_down = True
+                for seq in sequences[:1]:
+                    self.combinations.append({"type": "sequence", "cards": seq})
+                    for card in seq:
+                        self.remove_from_hand(card)
+                    self.sequences_laid_down += 1
+                    laid_down = True
+                self.has_completed_round_requirement = True
+                print(f"Jugador {self.id + 1} cumplió requisito ronda 4: 2 tríos, 1 seguidilla")
 
         if laid_down:
             self.has_laid_down = True
